@@ -4,11 +4,12 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
   Alert,
   ActivityIndicator,
 } from "react-native";
+import NativeScrollView from "@/components/NativeScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Platform } from "react-native";
 import { Download, Link, Play, Eye, CheckCircle } from "lucide-react-native";
 import Animated, {
   FadeIn,
@@ -79,13 +80,20 @@ export default function MetaVideosScreen() {
       });
     },
     onSuccess: (result) => {
-      Alert.alert(
-        "Sucesso", 
-        `Vídeo baixado com sucesso! Você pode encontrá-lo em:
+      if (result && result.success) {
+        Alert.alert(
+          "Sucesso", 
+          `Vídeo baixado com sucesso! Você pode encontrá-lo em:
 
 1. Galeria de fotos no álbum "ReelMate"
 2. Pasta de Downloads/ReelMate no armazenamento interno`
-      );
+        );
+      } else {
+        Alert.alert(
+          "Erro",
+          `Falha ao baixar o vídeo: ${result?.error || 'Erro desconhecido'}`
+        );
+      }
       setDownloadProgress(0);
     },
     onError: (error) => {
@@ -162,13 +170,15 @@ export default function MetaVideosScreen() {
           backgroundColor: "#000",
         }}
       >
-        <ScrollView
+        <NativeScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{
             paddingBottom: insets.bottom + 20,
           }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          bounces={Platform.OS === "android"}
+          overScrollMode={Platform.OS === "android" ? "always" : "auto"}
         >
           {/* Header Section */}
           <Animated.View
@@ -452,10 +462,10 @@ export default function MetaVideosScreen() {
                 3. Tap "Get Video Info" to fetch video details{"\n"}
                 4. Choose your preferred quality{"\n"}
                 5. Tap "Download Video" to save it to your device
-              </Text>
+          </Text>
             </View>
           </Animated.View>
-        </ScrollView>
+        </NativeScrollView>
       </View>
     </KeyboardAvoidingAnimatedView>
   );

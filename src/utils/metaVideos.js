@@ -3,11 +3,9 @@ import * as MediaLibrary from 'expo-media-library';
 import { Alert, Platform } from 'react-native';
 
 // Diretório onde os vídeos serão salvos
-const REELMATE_DIRECTORY = FileSystem.documentDirectory + 'ReelMate/';
-// Para Android, podemos usar o diretório de downloads que é mais acessível
-const ANDROID_DOWNLOAD_DIRECTORY = Platform.OS === 'android' ? 
-  FileSystem.documentDirectory + '../Download/ReelMate/' : 
-  FileSystem.documentDirectory + 'ReelMate/';
+const REELMATE_DIRECTORY = '/storage/emulated/0/Download/ReelMate/';
+// Para outros sistemas, usamos o diretório do app
+const APP_DIRECTORY = FileSystem.documentDirectory + 'ReelMate/';
 
 /**
  * Solicita permissões necessárias para acessar o armazenamento
@@ -20,15 +18,17 @@ export const requestStoragePermissions = async () => {
       return false;
     }
 
-    const { status } = await MediaLibrary.requestPermissionsAsync();
-    if (status !== 'granted') {
+    // Solicita apenas permissão de mídia
+    const mediaPermission = await MediaLibrary.requestPermissionsAsync();
+    if (mediaPermission.status !== 'granted') {
       Alert.alert(
         'Permissão necessária',
-        'Precisamos de permissão para acessar seus arquivos para baixar os vídeos.',
+        'Precisamos de permissão para salvar os vídeos na galeria.',
         [{ text: 'OK' }]
       );
       return false;
     }
+
     return true;
   } catch (error) {
     console.error('Erro ao solicitar permissões:', error);
@@ -42,14 +42,11 @@ export const requestStoragePermissions = async () => {
  */
 export const ensureDirectoryExists = async () => {
   try {
-    // Usa o diretório de downloads no Android para melhor acessibilidade
-    const directoryPath = Platform.OS === 'android' ? ANDROID_DOWNLOAD_DIRECTORY : REELMATE_DIRECTORY;
-    const dirInfo = await FileSystem.getInfoAsync(directoryPath);
+    // No Android, usamos a pasta Downloads/ReelMate
+    const directoryPath = Platform.OS === 'android' ? REELMATE_DIRECTORY : APP_DIRECTORY;
     
-    if (!dirInfo.exists) {
-      await FileSystem.makeDirectoryAsync(directoryPath, { intermediates: true });
-      console.log('Diretório ReelMate criado com sucesso em: ' + directoryPath);
-    }
+    // No Android 11+, não precisamos criar o diretório manualmente
+    // O MediaStore vai criar automaticamente quando salvarmos o primeiro arquivo
     
     return true;
   } catch (error) {
@@ -82,8 +79,8 @@ export const downloadMetaVideo = async (url, quality, progressCallback = () => {
     // Gera um nome de arquivo único baseado na data e hora
     const timestamp = new Date().getTime();
     const filename = `meta_video_${quality}_${timestamp}.mp4`;
-    // No Android, usamos o diretório de downloads que é mais acessível
-    const fileUri = Platform.OS === 'android' ? ANDROID_DOWNLOAD_DIRECTORY + filename : REELMATE_DIRECTORY + filename;
+    // No Android, salvamos diretamente na pasta Downloads/ReelMate
+    const fileUri = Platform.OS === 'android' ? REELMATE_DIRECTORY + filename : APP_DIRECTORY + filename;
     
     // Inicia o download com acompanhamento de progresso
     const downloadResumable = FileSystem.createDownloadResumable(

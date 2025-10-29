@@ -7,7 +7,8 @@ import {
   Alert,
   FlatList,
   Share,
-  Dimensions
+  Dimensions,
+  Platform
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
@@ -410,6 +411,8 @@ export default function DownloadedScreen() {
           paddingBottom: insets.bottom + 20,
         }}
         showsVerticalScrollIndicator={false}
+        bounces={Platform.OS === "android"}
+        overScrollMode={Platform.OS === "android" ? "always" : "auto"}
       >
         {/* Header Section */}
         <Animated.View 
@@ -557,6 +560,8 @@ export default function DownloadedScreen() {
               scrollEnabled={false}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: 20 }}
+              bounces={Platform.OS === "android"}
+              overScrollMode={Platform.OS === "android" ? "always" : "auto"}
             />
           </View>
         ) : (

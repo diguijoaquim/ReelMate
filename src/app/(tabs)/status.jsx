@@ -359,6 +359,9 @@ export default function StatusScreen() {
         renderItem={({ item, index }) => <StatusItem item={item} index={index} />}
         contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
         columnWrapperStyle={{ paddingHorizontal: 12 }}
+        showsVerticalScrollIndicator={false}
+        bounces={Platform.OS === "android"}
+        overScrollMode={Platform.OS === "android" ? "always" : "auto"}
         ListHeaderComponent={
           <>
             {/* Header Section */}
@@ -459,7 +462,6 @@ export default function StatusScreen() {
           </>
         }
         ListEmptyComponent={!isLoading ? <EmptyState /> : null}
-        showsVerticalScrollIndicator={false}
       />
     </View>
   );

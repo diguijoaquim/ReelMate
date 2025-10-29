@@ -3,7 +3,7 @@ import * as MediaLibrary from 'expo-media-library';
 import { Alert, Platform } from 'react-native';
 
 // Caminho para a pasta de status do WhatsApp no Android
-const WHATSAPP_STATUS_PATH = FileSystem.documentDirectory + '../Android/media/com.whatsapp/WhatsApp/Media/.Statuses/';
+const WHATSAPP_STATUS_PATH = '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses/';
 
 /**
  * Solicita permissões necessárias para acessar o armazenamento
@@ -16,15 +16,17 @@ export const requestStoragePermissions = async () => {
       return false;
     }
 
-    const { status } = await MediaLibrary.requestPermissionsAsync();
-    if (status !== 'granted') {
+    // Solicita apenas permissão de mídia
+    const mediaPermission = await MediaLibrary.requestPermissionsAsync();
+    if (mediaPermission.status !== 'granted') {
       Alert.alert(
         'Permissão necessária',
-        'Precisamos de permissão para acessar seus arquivos para baixar os status do WhatsApp.',
+        'Precisamos de permissão para acessar e salvar os status do WhatsApp.',
         [{ text: 'OK' }]
       );
       return false;
     }
+
     return true;
   } catch (error) {
     console.error('Erro ao solicitar permissões:', error);
