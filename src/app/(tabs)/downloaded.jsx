@@ -1,696 +1,616 @@
-import React, { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  Image,
-  FlatList,
+import React, { useState, useEffect } from 'react';
+import { 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  ScrollView, 
   Alert,
-  RefreshControl,
-} from "react-native";
-import { StatusBar } from "expo-status-bar";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
-import {
-  Menu,
-  Play,
+  FlatList,
   Share,
+  Dimensions
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { 
+  Play,
+  Share as ShareIcon,
   Trash2,
+  FileText,
+  Calendar,
+  HardDrive,
   MoreVertical,
   Search,
-  Grid3X3,
-  List,
-  Download,
-} from "lucide-react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect } from "expo-router";
-import {
-  useFonts,
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-} from "@expo-google-fonts/inter";
+  Filter
+} from 'lucide-react-native';
+import Animated, { 
+  FadeIn, 
+  FadeInUp, 
+  SlideInRight,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming
+} from 'react-native-reanimated';
+import { Image as ExpoImage } from 'expo-image';
+import { COLORS } from '@/theme/colors';
+
+const { width } = Dimensions.get('window');
 
 export default function DownloadedScreen() {
   const insets = useSafeAreaInsets();
-  const [refreshing, setRefreshing] = useState(false);
-  const [viewMode, setViewMode] = useState("grid"); // 'grid' or 'list'
-  const [downloadedVideos, setDownloadedVideos] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [downloads, setDownloads] = useState([]);
+  const [filter, setFilter] = useState('all'); // all, videos, images
+  const [sortBy, setSortBy] = useState('newest'); // newest, oldest, size
 
-  const [fontsLoaded] = useFonts({
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-  });
+  const filterOpacity = useSharedValue(1);
 
-  // Load downloads from AsyncStorage
-  const loadDownloads = async () => {
-    try {
-      const downloads = await AsyncStorage.getItem("reelmate_downloads");
-      if (downloads) {
-        const parsedDownloads = JSON.parse(downloads);
-        setDownloadedVideos(parsedDownloads);
-      }
-    } catch (error) {
-      console.error("Error loading downloads:", error);
-    } finally {
-      setLoading(false);
+  // Mock downloaded files data
+  const mockDownloads = [
+    {
+      id: '1',
+      type: 'video',
+      title: '2M views · 70K reactions | Huyu ni nani alirudishiwa kofia yake',
+      thumbnail: 'https://picsum.photos/400/300?random=1',
+      source: 'Facebook',
+      size: '15.2 MB',
+      duration: '0:42',
+      downloadedAt: Date.now() - 1000 * 60 * 30, // 30 minutes ago
+      quality: 'HD',
+    },
+    {
+      id: '2',
+      type: 'video',
+      title: 'Amazing sunset timelapse from my balcony',
+      thumbnail: 'https://picsum.photos/400/300?random=2',
+      source: 'Instagram',
+      size: '8.7 MB',
+      duration: '0:25',
+      downloadedAt: Date.now() - 1000 * 60 * 60 * 2, // 2 hours ago
+      quality: 'HD',
+    },
+    {
+      id: '3',
+      type: 'video',
+      title: 'Funny cat compilation that will make you laugh',
+      thumbnail: 'https://picsum.photos/400/300?random=3',
+      source: 'Facebook',
+      size: '22.1 MB',
+      duration: '1:15',
+      downloadedAt: Date.now() - 1000 * 60 * 60 * 5, // 5 hours ago
+      quality: 'HD',
+    },
+    {
+      id: '4',
+      type: 'video',
+      title: 'Street food tour in Bangkok - must watch!',
+      thumbnail: 'https://picsum.photos/400/300?random=4',
+      source: 'Instagram',
+      size: '31.5 MB',
+      duration: '2:03',
+      downloadedAt: Date.now() - 1000 * 60 * 60 * 24, // 1 day ago
+      quality: 'HD',
+    },
+    {
+      id: '5',
+      type: 'video',
+      title: 'Quick workout routine for busy people',
+      thumbnail: 'https://picsum.photos/400/300?random=5',
+      source: 'Facebook',
+      size: '12.8 MB',
+      duration: '0:58',
+      downloadedAt: Date.now() - 1000 * 60 * 60 * 24 * 2, // 2 days ago
+      quality: 'SD',
+    },
+  ];
+
+  useEffect(() => {
+    setDownloads(mockDownloads);
+  }, []);
+
+  const formatTimestamp = (timestamp) => {
+    const now = new Date();
+    const downloadDate = new Date(timestamp);
+    const diffInHours = Math.floor((now - downloadDate) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) {
+      const diffInMinutes = Math.floor((now - downloadDate) / (1000 * 60));
+      return `${diffInMinutes}m ago`;
+    } else if (diffInHours < 24) {
+      return `${diffInHours}h ago`;
+    } else {
+      const diffInDays = Math.floor(diffInHours / 24);
+      return `${diffInDays}d ago`;
     }
   };
 
-  // Load downloads when screen comes into focus
-  useFocusEffect(
-    React.useCallback(() => {
-      loadDownloads();
-    }, []),
-  );
-
-  // Calculate totals
-  const totalVideos = downloadedVideos.length;
-  const totalSize = downloadedVideos.reduce((acc, video) => {
-    const sizeNumber = parseFloat(video.size.replace(" MB", ""));
-    return acc + sizeNumber;
-  }, 0);
-  const totalDuration = downloadedVideos.reduce((acc, video) => {
-    // Convert duration to seconds for calculation
-    const [minutes, seconds] = video.duration.split(":").map(Number);
-    return acc + minutes * 60 + seconds;
-  }, 0);
-
-  // Format total duration back to minutes
-  const formatTotalDuration = (totalSeconds) => {
-    const minutes = Math.floor(totalSeconds / 60);
-    return `${minutes}m`;
+  const getTotalSize = () => {
+    const totalMB = downloads.reduce((acc, item) => {
+      const size = parseFloat(item.size.replace(' MB', ''));
+      return acc + size;
+    }, 0);
+    
+    if (totalMB > 1024) {
+      return `${(totalMB / 1024).toFixed(1)} GB`;
+    }
+    return `${totalMB.toFixed(1)} MB`;
   };
 
-  if (!fontsLoaded) {
-    return null;
-  }
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await loadDownloads();
-    setRefreshing(false);
+  const handleShare = async (item) => {
+    try {
+      await Share.share({
+        message: `Check out this video: ${item.title}`,
+      });
+    } catch (error) {
+      console.error(error);
+    }
   };
 
-  const handleVideoPress = (video) => {
-    const timeAgo = new Date(video.downloadedAt).toLocaleDateString("pt-BR", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
+  const handleDelete = (item) => {
     Alert.alert(
-      video.title,
-      `Baixado em: ${timeAgo}\nTamanho: ${video.size}\nPlataforma: ${video.platform}`,
+      'Delete Video',
+      'Are you sure you want to delete this video?',
       [
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: "Reproduzir",
-          onPress: () => console.log("Play video:", video.id),
-        },
-        { text: "Compartilhar", onPress: () => handleShare(video) },
-        {
-          text: "Excluir",
-          onPress: () => handleDelete(video),
-          style: "destructive",
-        },
-        { text: "Cancelar", style: "cancel" },
-      ],
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setDownloads(downloads.filter(d => d.id !== item.id));
+            Alert.alert('Success', 'Video deleted successfully');
+          }
+        }
+      ]
     );
   };
 
-  const handleShare = (video) => {
-    Alert.alert("Compartilhar", `Compartilhando ${video.title}...`);
-  };
-
-  const handleDelete = (video) => {
-    Alert.alert(
-      "Excluir Vídeo",
-      `Tem certeza que deseja excluir "${video.title}"?`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Excluir",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const updatedVideos = downloadedVideos.filter(
-                (v) => v.id !== video.id,
-              );
-              setDownloadedVideos(updatedVideos);
-              await AsyncStorage.setItem(
-                "reelmate_downloads",
-                JSON.stringify(updatedVideos),
-              );
-            } catch (error) {
-              console.error("Error deleting video:", error);
-              Alert.alert("Erro", "Não foi possível excluir o vídeo");
-            }
-          },
-        },
-      ],
-    );
-  };
-
-  const formatTimeAgo = (dateString) => {
-    const now = new Date();
-    const downloadDate = new Date(dateString);
-    const diffInHours = Math.floor((now - downloadDate) / (1000 * 60 * 60));
-
-    if (diffInHours < 1) return "Agora há pouco";
-    if (diffInHours < 24) return `${diffInHours}h atrás`;
-
-    const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays === 1) return "Ontem";
-    if (diffInDays < 7) return `${diffInDays} dias atrás`;
-
-    const diffInWeeks = Math.floor(diffInDays / 7);
-    if (diffInWeeks === 1) return "1 semana atrás";
-    return `${diffInWeeks} semanas atrás`;
-  };
-
-  const renderGridItem = ({ item }) => (
+  const FilterButton = ({ value, label, isSelected, onPress }) => (
     <TouchableOpacity
+      onPress={onPress}
       style={{
-        flex: 1,
-        margin: 6,
-        borderRadius: 12,
-        overflow: "hidden",
-        backgroundColor: "#FFFFFF",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-        elevation: 2,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        backgroundColor: isSelected ? COLORS.accent : '#333',
+        marginRight: 8,
       }}
-      activeOpacity={0.9}
-      onPress={() => handleVideoPress(item)}
+      activeOpacity={0.8}
     >
-      <View style={{ position: "relative" }}>
-        <Image
-          source={{ uri: item.thumbnail }}
-          style={{
-            width: "100%",
-            aspectRatio: 9 / 16,
-            backgroundColor: "#F5F5F5",
-          }}
-          resizeMode="cover"
-        />
-
-        {/* Play Button Overlay */}
-        <View
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <View
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 24,
-              backgroundColor: "rgba(0,0,0,0.7)",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Play size={20} color="#FFFFFF" style={{ marginLeft: 2 }} />
-          </View>
-        </View>
-
-        {/* Duration Badge */}
-        <View
-          style={{
-            position: "absolute",
-            bottom: 8,
-            right: 8,
-            backgroundColor: "rgba(0,0,0,0.8)",
-            borderRadius: 4,
-            paddingHorizontal: 6,
-            paddingVertical: 2,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 10,
-              fontFamily: "Inter_500Medium",
-              color: "#FFFFFF",
-            }}
-          >
-            {item.duration}
-          </Text>
-        </View>
-
-        {/* Platform Badge */}
-        <View
-          style={{
-            position: "absolute",
-            top: 8,
-            left: 8,
-            backgroundColor:
-              item.platform === "Instagram" ? "#E4405F" : "#1877F2",
-            borderRadius: 4,
-            paddingHorizontal: 6,
-            paddingVertical: 2,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 8,
-              fontFamily: "Inter_500Medium",
-              color: "#FFFFFF",
-            }}
-          >
-            {item.platform}
-          </Text>
-        </View>
-      </View>
-
-      <View style={{ padding: 12 }}>
-        <Text
-          style={{
-            fontSize: 14,
-            fontFamily: "Inter_500Medium",
-            color: "#1A1A1A",
-            marginBottom: 4,
-          }}
-          numberOfLines={2}
-        >
-          {item.title}
-        </Text>
-        <Text
-          style={{
-            fontSize: 12,
-            fontFamily: "Inter_400Regular",
-            color: "#9E9E9E",
-          }}
-        >
-          {item.size} • {formatTimeAgo(item.downloadedAt)}
-        </Text>
-      </View>
+      <Text style={{
+        color: isSelected ? '#fff' : '#999',
+        fontSize: 13,
+        fontWeight: isSelected ? '600' : '500',
+      }}>
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 
-  const renderListItem = ({ item }) => (
-    <TouchableOpacity
+  const DownloadItem = ({ item, index }) => (
+    <Animated.View
+      entering={SlideInRight.delay(index * 50)}
       style={{
-        backgroundColor: "#FFFFFF",
-        marginHorizontal: 20,
-        marginBottom: 12,
+        backgroundColor: '#1a1a1a',
         borderRadius: 12,
-        padding: 12,
-        flexDirection: "row",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-        elevation: 2,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: '#333',
+        overflow: 'hidden',
       }}
-      activeOpacity={0.9}
-      onPress={() => handleVideoPress(item)}
     >
-      <View style={{ position: "relative" }}>
-        <Image
-          source={{ uri: item.thumbnail }}
-          style={{
-            width: 80,
-            height: 120,
-            borderRadius: 8,
-            backgroundColor: "#F5F5F5",
-          }}
-          resizeMode="cover"
-        />
+      <TouchableOpacity activeOpacity={0.9}>
+        <View style={{ flexDirection: 'row' }}>
+          {/* Thumbnail */}
+          <View style={{ position: 'relative' }}>
+            <ExpoImage
+              source={{ uri: item.thumbnail }}
+              style={{ 
+                width: 100, 
+                height: 80,
+              }}
+              contentFit="cover"
+              transition={200}
+            />
+            
+            {/* Play overlay */}
+            <View style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.4)',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <View style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: 'rgba(255,255,255,0.9)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <Play size={16} color="#000" />
+              </View>
+            </View>
 
-        <View
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <View
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: "rgba(0,0,0,0.7)",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Play size={14} color="#FFFFFF" style={{ marginLeft: 1 }} />
-          </View>
-        </View>
-
-        <View
-          style={{
-            position: "absolute",
-            bottom: 4,
-            right: 4,
-            backgroundColor: "rgba(0,0,0,0.8)",
-            borderRadius: 3,
-            paddingHorizontal: 4,
-            paddingVertical: 1,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 8,
-              fontFamily: "Inter_500Medium",
-              color: "#FFFFFF",
-            }}
-          >
-            {item.duration}
-          </Text>
-        </View>
-      </View>
-
-      <View
-        style={{ flex: 1, marginLeft: 12, justifyContent: "space-between" }}
-      >
-        <View>
-          <Text
-            style={{
-              fontSize: 16,
-              fontFamily: "Inter_500Medium",
-              color: "#1A1A1A",
-              marginBottom: 4,
-            }}
-            numberOfLines={2}
-          >
-            {item.title}
-          </Text>
-
-          <View
-            style={{
-              backgroundColor:
-                item.platform === "Instagram" ? "#E4405F" : "#1877F2",
+            {/* Duration */}
+            <View style={{
+              position: 'absolute',
+              bottom: 6,
+              right: 6,
+              backgroundColor: 'rgba(0,0,0,0.8)',
               borderRadius: 4,
-              paddingHorizontal: 6,
+              paddingHorizontal: 4,
               paddingVertical: 2,
-              alignSelf: "flex-start",
+            }}>
+              <Text style={{
+                color: '#fff',
+                fontSize: 10,
+                fontWeight: '500',
+              }}>
+                {item.duration}
+              </Text>
+            </View>
+          </View>
+
+          {/* Content */}
+          <View style={{ flex: 1, padding: 16 }}>
+            <Text 
+              numberOfLines={2}
+              style={{
+                fontSize: 15,
+                fontWeight: '500',
+                color: '#fff',
+                lineHeight: 20,
+                marginBottom: 8,
+              }}
+            >
+              {item.title}
+            </Text>
+            
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
               marginBottom: 8,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 10,
-                fontFamily: "Inter_500Medium",
-                color: "#FFFFFF",
-              }}
-            >
-              {item.platform}
-            </Text>
+            }}>
+              <View style={{
+                backgroundColor: item.source === 'Facebook' ? '#1877F2' : '#E4405F',
+                paddingHorizontal: 6,
+                paddingVertical: 2,
+                borderRadius: 4,
+                marginRight: 8,
+              }}>
+                <Text style={{
+                  color: '#fff',
+                  fontSize: 10,
+                  fontWeight: '600',
+                }}>
+                  {item.source}
+                </Text>
+              </View>
+              
+              <View style={{
+                backgroundColor: '#333',
+                paddingHorizontal: 6,
+                paddingVertical: 2,
+                borderRadius: 4,
+              }}>
+                <Text style={{
+                  color: '#999',
+                  fontSize: 10,
+                  fontWeight: '500',
+                }}>
+                  {item.quality}
+                </Text>
+              </View>
+            </View>
+
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <View>
+                <Text style={{
+                  fontSize: 12,
+                  color: '#666',
+                  marginBottom: 2,
+                }}>
+                  {item.size} • {formatTimestamp(item.downloadedAt)}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row' }}>
+                <TouchableOpacity
+                  onPress={() => handleShare(item)}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    backgroundColor: '#333',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 8,
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <ShareIcon size={14} color="#999" />
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  onPress={() => handleDelete(item)}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    backgroundColor: '#333',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Trash2 size={14} color="#FF3B30" />
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
 
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <View>
-            <Text
-              style={{
-                fontSize: 12,
-                fontFamily: "Inter_400Regular",
-                color: "#666666",
-              }}
-            >
-              {item.size}
-            </Text>
-            <Text
-              style={{
-                fontSize: 10,
-                fontFamily: "Inter_400Regular",
-                color: "#9E9E9E",
-              }}
-            >
-              {formatTimeAgo(item.downloadedAt)}
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: "#F5F5F5",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            onPress={() => handleVideoPress(item)}
-            activeOpacity={0.7}
-          >
-            <MoreVertical size={16} color="#9E9E9E" />
-          </TouchableOpacity>
-        </View>
+  const EmptyState = () => (
+    <Animated.View 
+      entering={FadeIn.delay(300)}
+      style={{
+        alignItems: 'center',
+        paddingVertical: 60,
+        paddingHorizontal: 40,
+      }}
+    >
+      <View style={{
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: '#1a1a1a',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 20,
+      }}>
+        <FileText size={32} color="#666" />
       </View>
-    </TouchableOpacity>
+      <Text style={{
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#fff',
+        marginBottom: 8,
+        textAlign: 'center',
+      }}>
+        No Downloads Yet
+      </Text>
+      <Text style={{
+        fontSize: 14,
+        color: '#666',
+        textAlign: 'center',
+        lineHeight: 20,
+      }}>
+        Your downloaded videos will appear here. Go to Meta Videos tab to start downloading!
+      </Text>
+    </Animated.View>
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#FAFAFA" }}>
-      <StatusBar style="light" />
-
-      {/* Instagram-style gradient header */}
-      <LinearGradient
-        colors={["#833AB4", "#FD1D1D", "#FCB045"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={{
-          paddingTop: insets.top + 20,
-          paddingBottom: 20,
-          paddingHorizontal: 20,
+    <View style={{ 
+      flex: 1, 
+      backgroundColor: '#000',
+    }}>
+      <ScrollView 
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingBottom: insets.bottom + 20,
         }}
+        showsVerticalScrollIndicator={false}
       >
-        <View
+        {/* Header Section */}
+        <Animated.View 
+          entering={FadeIn.delay(200)}
           style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
+            paddingHorizontal: 20,
+            paddingVertical: 24,
           }}
         >
-          <TouchableOpacity
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: "rgba(255,255,255,0.2)",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            activeOpacity={0.7}
-          >
-            <Menu size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-
-          <Text
-            style={{
-              fontSize: 24,
-              fontFamily: "Inter_600SemiBold",
-              color: "#FFFFFF",
-              textAlign: "center",
-            }}
-          >
-            Downloads
+          <Text style={{
+            fontSize: 28,
+            fontWeight: 'bold',
+            color: '#fff',
+            marginBottom: 8,
+          }}>
+            Downloaded
           </Text>
+          <Text style={{
+            fontSize: 16,
+            color: '#666',
+            lineHeight: 22,
+          }}>
+            Manage your downloaded videos
+          </Text>
+        </Animated.View>
 
-          <TouchableOpacity
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: "rgba(255,255,255,0.2)",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            onPress={() => setViewMode(viewMode === "grid" ? "list" : "grid")}
-            activeOpacity={0.7}
-          >
-            {viewMode === "grid" ? (
-              <List size={20} color="#FFFFFF" />
-            ) : (
-              <Grid3X3 size={20} color="#FFFFFF" />
-            )}
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
-
-      {/* Summary Stats */}
-      <View
-        style={{
-          backgroundColor: "#FFFFFF",
-          marginHorizontal: 20,
-          marginTop: 20,
-          borderRadius: 12,
-          padding: 16,
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.05,
-          shadowRadius: 8,
-          elevation: 2,
-        }}
-      >
-        <View
+        {/* Stats Section */}
+        <Animated.View 
+          entering={FadeInUp.delay(300)}
           style={{
-            flexDirection: "row",
-            justifyContent: "space-around",
+            paddingHorizontal: 20,
+            marginBottom: 24,
           }}
         >
-          <View style={{ alignItems: "center" }}>
-            <Text
-              style={{
-                fontSize: 24,
-                fontFamily: "Inter_600SemiBold",
-                color: "#E91E63",
-                marginBottom: 4,
-              }}
-            >
-              {totalVideos}
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                fontFamily: "Inter_400Regular",
-                color: "#666666",
-              }}
-            >
-              Vídeos
-            </Text>
+          <View style={{
+            backgroundColor: '#1a1a1a',
+            borderRadius: 12,
+            padding: 20,
+            borderWidth: 1,
+            borderColor: '#333',
+          }}>
+            <View style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+            }}>
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <HardDrive color={COLORS.accent} size={20} style={{ marginBottom: 8 }} />
+                <Text style={{
+                  fontSize: 18,
+                  fontWeight: '600',
+                  color: '#fff',
+                  marginBottom: 2,
+                }}>
+                  {downloads.length}
+                </Text>
+                <Text style={{
+                  fontSize: 12,
+                  color: '#666',
+                }}>
+                  Videos
+                </Text>
+              </View>
+              
+              <View style={{
+                width: 1,
+                backgroundColor: '#333',
+                marginHorizontal: 20,
+              }} />
+              
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <Calendar color={COLORS.success} size={20} style={{ marginBottom: 8 }} />
+                <Text style={{
+                  fontSize: 18,
+                  fontWeight: '600',
+                  color: '#fff',
+                  marginBottom: 2,
+                }}>
+                  {getTotalSize()}
+                </Text>
+                <Text style={{
+                  fontSize: 12,
+                  color: '#666',
+                }}>
+                  Total Size
+                </Text>
+              </View>
+            </View>
           </View>
+        </Animated.View>
 
-          <View style={{ alignItems: "center" }}>
-            <Text
-              style={{
-                fontSize: 24,
-                fontFamily: "Inter_600SemiBold",
-                color: "#2196F3",
-                marginBottom: 4,
-              }}
-            >
-              {totalSize.toFixed(0)}
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                fontFamily: "Inter_400Regular",
-                color: "#666666",
-              }}
-            >
-              MB Total
-            </Text>
-          </View>
-
-          <View style={{ alignItems: "center" }}>
-            <Text
-              style={{
-                fontSize: 24,
-                fontFamily: "Inter_600SemiBold",
-                color: "#4CAF50",
-                marginBottom: 4,
-              }}
-            >
-              {formatTotalDuration(totalDuration)}
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                fontFamily: "Inter_400Regular",
-                color: "#666666",
-              }}
-            >
-              Duração
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {downloadedVideos.length === 0 ? (
-        <View
+        {/* Filter Section */}
+        <Animated.View 
+          entering={FadeInUp.delay(400)}
           style={{
-            flex: 1,
-            alignItems: "center",
-            justifyContent: "center",
-            paddingHorizontal: 40,
+            paddingHorizontal: 20,
+            marginBottom: 24,
           }}
         >
-          <View
-            style={{
-              width: 80,
-              height: 80,
-              borderRadius: 40,
-              backgroundColor: "#F5F5F5",
-              alignItems: "center",
-              justifyContent: "center",
-              marginBottom: 24,
-            }}
-          >
-            <Download size={32} color="#9E9E9E" />
-          </View>
-
-          <Text
-            style={{
-              fontSize: 20,
-              fontFamily: "Inter_600SemiBold",
-              color: "#1A1A1A",
-              marginBottom: 12,
-              textAlign: "center",
-            }}
-          >
-            Nenhum Download
+          <Text style={{
+            fontSize: 16,
+            fontWeight: '600',
+            color: '#fff',
+            marginBottom: 12,
+          }}>
+            Filter by:
           </Text>
-
-          <Text
-            style={{
-              fontSize: 16,
-              fontFamily: "Inter_400Regular",
-              color: "#666666",
-              lineHeight: 24,
-              textAlign: "center",
-            }}
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingRight: 20 }}
           >
-            Comece a baixar vídeos do Instagram e Facebook para vê-los aqui na
-            pasta ReelMate.
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={downloadedVideos}
-          renderItem={viewMode === "grid" ? renderGridItem : renderListItem}
-          numColumns={viewMode === "grid" ? 2 : 1}
-          key={viewMode} // Force re-render when switching modes
-          contentContainerStyle={{
-            padding: viewMode === "grid" ? 14 : 0,
-            paddingTop: 20,
-            paddingBottom: insets.bottom + 100,
-          }}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={["#E91E63"]}
-              tintColor="#E91E63"
+            <FilterButton
+              value="all"
+              label="All"
+              isSelected={filter === 'all'}
+              onPress={() => setFilter('all')}
             />
-          }
-        />
-      )}
+            <FilterButton
+              value="videos"
+              label="Videos"
+              isSelected={filter === 'videos'}
+              onPress={() => setFilter('videos')}
+            />
+            <FilterButton
+              value="facebook"
+              label="Facebook"
+              isSelected={filter === 'facebook'}
+              onPress={() => setFilter('facebook')}
+            />
+            <FilterButton
+              value="instagram"
+              label="Instagram"
+              isSelected={filter === 'instagram'}
+              onPress={() => setFilter('instagram')}
+            />
+          </ScrollView>
+        </Animated.View>
+
+        {/* Downloads List */}
+        {downloads.length > 0 ? (
+          <View style={{ paddingHorizontal: 20 }}>
+            <FlatList
+              data={downloads}
+              renderItem={({ item, index }) => <DownloadItem item={item} index={index} />}
+              scrollEnabled={false}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 20 }}
+            />
+          </View>
+        ) : (
+          <EmptyState />
+        )}
+
+        {/* Clear All Button */}
+        {downloads.length > 0 && (
+          <Animated.View 
+            entering={FadeIn.delay(600)}
+            style={{
+              paddingHorizontal: 20,
+              marginBottom: 20,
+            }}
+          >
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert(
+                  'Clear All Downloads',
+                  'Are you sure you want to delete all downloaded videos?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Clear All',
+                      style: 'destructive',
+                      onPress: () => {
+                        setDownloads([]);
+                        Alert.alert('Success', 'All downloads cleared');
+                      }
+                    }
+                  ]
+                );
+              }}
+              style={{
+                backgroundColor: '#1a1a1a',
+                borderRadius: 12,
+                paddingVertical: 16,
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: '#FF3B30',
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={{
+                color: '#FF3B30',
+                fontSize: 15,
+                fontWeight: '600',
+              }}>
+                Clear All Downloads
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
+        )}
+      </ScrollView>
     </View>
   );
 }
