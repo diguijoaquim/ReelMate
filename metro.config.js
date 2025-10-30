@@ -39,12 +39,6 @@ const WEB_ALIASES = {
     './polyfills/web/scrollview.web.jsx'
   ),
 };
-const NATIVE_ALIASES = {
-  './Libraries/Components/TextInput/TextInput': path.resolve(
-    __dirname,
-    './polyfills/native/texinput.native.jsx'
-  ),
-};
 fs.mkdirSync(VIRTUAL_ROOT_UNRESOLVED, { recursive: true });
 config.watchFolders = [...config.watchFolders, VIRTUAL_ROOT, VIRTUAL_ROOT_UNRESOLVED];
 
@@ -69,10 +63,6 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
         return context.resolveRequest(context, WEB_ALIASES[moduleName], platform);
       }
       return context.resolveRequest(context, moduleName, platform);
-    }
-
-    if (NATIVE_ALIASES[moduleName] && !moduleName.startsWith('./polyfills/')) {
-      return context.resolveRequest(context, NATIVE_ALIASES[moduleName], platform);
     }
     return context.resolveRequest(context, moduleName, platform);
   } catch (error) {

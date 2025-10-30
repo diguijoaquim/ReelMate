@@ -2,10 +2,7 @@ import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import { Alert, Platform } from 'react-native';
 
-// Diretório onde os vídeos serão salvos
-const REELMATE_DIRECTORY = '/storage/emulated/0/Download/ReelMate/';
-// Para outros sistemas, usamos o diretório do app
-const APP_DIRECTORY = FileSystem.documentDirectory + 'ReelMate/';
+const APP_CACHE_DIRECTORY = FileSystem.cacheDirectory;
 
 /**
  * Solicita permissões necessárias para acessar o armazenamento
@@ -37,17 +34,69 @@ export const requestStoragePermissions = async () => {
 };
 
 /**
+ * Lista vídeos baixados no álbum "ReelMate" da galeria
+ * @returns {Promise<Array>} - Lista de itens com metadados dos vídeos
+ */
+export const listDownloadedVideos = async () => {
+  try {
+    const hasPermission = await requestStoragePermissions();
+    if (!hasPermission) return [];
+
+    const album = await MediaLibrary.getAlbumAsync('ReelMate');
+    if (!album) return [];
+
+    const page = await MediaLibrary.getAssetsAsync({
+      album,
+      mediaType: [MediaLibrary.MediaType.video],
+      first: 2000,
+      sortBy: MediaLibrary.SortBy.creationTime,
+    });
+
+    const assets = (page?.assets || []).sort((a, b) => (b.creationTime || 0) - (a.creationTime || 0));
+
+    const items = await Promise.all(
+      assets.map(async (asset) => {
+        let uri = asset.uri;
+        try {
+          const info = await MediaLibrary.getAssetInfoAsync(asset);
+          uri = info?.localUri || asset.uri;
+        } catch {}
+        let sizeText = undefined;
+        try {
+          const stat = await FileSystem.getInfoAsync(uri);
+          if (stat?.size) {
+            const mb = stat.size / (1024 * 1024);
+            sizeText = `${mb.toFixed(1)} MB`;
+          }
+        } catch {}
+        return {
+          id: asset.id,
+          title: asset.filename || 'Video',
+          url: uri,
+          platform: 'local',
+          downloadDate: new Date(asset.creationTime || Date.now()).toISOString(),
+          status: 'completed',
+          quality: 'unknown',
+          fileSize: sizeText,
+        };
+      })
+    );
+
+    return items;
+  } catch (error) {
+    console.error('Erro ao listar vídeos baixados:', error);
+    return [];
+  }
+};
+
+/**
  * Verifica se o diretório ReelMate existe e o cria se necessário
  * @returns {Promise<boolean>} - Se o diretório existe ou foi criado com sucesso
  */
 export const ensureDirectoryExists = async () => {
   try {
-    // No Android, usamos a pasta Downloads/ReelMate
-    const directoryPath = Platform.OS === 'android' ? REELMATE_DIRECTORY : APP_DIRECTORY;
-    
-    // No Android 11+, não precisamos criar o diretório manualmente
-    // O MediaStore vai criar automaticamente quando salvarmos o primeiro arquivo
-    
+    const directoryPath = APP_CACHE_DIRECTORY;
+    await FileSystem.makeDirectoryAsync(directoryPath, { intermediates: true }).catch(() => {});
     return true;
   } catch (error) {
     console.error('Erro ao criar diretório ReelMate:', error);
@@ -79,8 +128,7 @@ export const downloadMetaVideo = async (url, quality, progressCallback = () => {
     // Gera um nome de arquivo único baseado na data e hora
     const timestamp = new Date().getTime();
     const filename = `meta_video_${quality}_${timestamp}.mp4`;
-    // No Android, salvamos diretamente na pasta Downloads/ReelMate
-    const fileUri = Platform.OS === 'android' ? REELMATE_DIRECTORY + filename : APP_DIRECTORY + filename;
+    const fileUri = `${APP_CACHE_DIRECTORY}${filename}`;
     
     // Inicia o download com acompanhamento de progresso
     const downloadResumable = FileSystem.createDownloadResumable(
@@ -88,7 +136,9 @@ export const downloadMetaVideo = async (url, quality, progressCallback = () => {
       fileUri,
       {},
       (downloadProgress) => {
-        const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite * 100;
+        const total = downloadProgress.totalBytesExpectedToWrite || 0;
+        const written = downloadProgress.totalBytesWritten || 0;
+        const progress = total > 0 ? (written / total) * 100 : 0;
         progressCallback(Math.round(progress));
       }
     );
@@ -96,10 +146,8 @@ export const downloadMetaVideo = async (url, quality, progressCallback = () => {
     const result = await downloadResumable.downloadAsync();
     
     if (result && result.uri) {
-      // Cria um asset na galeria a partir do arquivo
       const asset = await MediaLibrary.createAssetAsync(result.uri);
       
-      // Cria um álbum "ReelMate" se não existir e adiciona o asset a ele
       const album = await MediaLibrary.getAlbumAsync('ReelMate');
       if (album) {
         await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);

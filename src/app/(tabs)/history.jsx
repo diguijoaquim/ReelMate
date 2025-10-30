@@ -28,63 +28,13 @@ import Animated, {
   withSpring
 } from 'react-native-reanimated';
 import { COLORS } from '@/theme/colors';
+import { listDownloadedVideos } from '@/utils/metaVideos';
 
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('all');
-  const [historyData, setHistoryData] = useState([
-    {
-      id: 1,
-      title: "Amazing Football Skills Compilation",
-      url: "https://www.facebook.com/share/r/1FaVCYTbh2/",
-      platform: "facebook",
-      downloadDate: "2024-10-28T10:30:00Z",
-      status: "completed",
-      quality: "best_quality",
-      fileSize: "45.2 MB"
-    },
-    {
-      id: 2,
-      title: "Sunset Beach Vibes - Instagram Reel",
-      url: "https://www.instagram.com/reel/xyz123/",
-      platform: "instagram",
-      downloadDate: "2024-10-28T09:15:00Z",
-      status: "completed",
-      quality: "medium_quality",
-      fileSize: "28.7 MB"
-    },
-    {
-      id: 3,
-      title: "Cooking Tutorial - Pasta Recipe",
-      url: "https://www.facebook.com/watch/video/456789/",
-      platform: "facebook",
-      downloadDate: "2024-10-27T16:45:00Z",
-      status: "failed",
-      quality: "best_quality",
-      fileSize: "0 MB"
-    },
-    {
-      id: 4,
-      title: "Dance Challenge TikTok Style",
-      url: "https://www.instagram.com/p/abc456/",
-      platform: "instagram",
-      downloadDate: "2024-10-27T14:20:00Z",
-      status: "completed",
-      quality: "best_quality",
-      fileSize: "32.1 MB"
-    },
-    {
-      id: 5,
-      title: "Travel Vlog - Mountain Adventure",
-      url: "https://www.facebook.com/share/v/xyz789/",
-      platform: "facebook",
-      downloadDate: "2024-10-26T11:30:00Z",
-      status: "completed",
-      quality: "medium_quality",
-      fileSize: "67.8 MB"
-    }
-  ]);
+  const [historyData, setHistoryData] = useState([]);
 
   const buttonScale = useSharedValue(1);
 
@@ -100,12 +50,24 @@ export default function HistoryScreen() {
     });
   };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    // Simulate refresh delay
-    setTimeout(() => {
+  const fetchDownloads = async () => {
+    try {
+      setRefreshing(true);
+      const items = await listDownloadedVideos();
+      setHistoryData(items);
+    } catch (e) {
+      // no-op
+    } finally {
       setRefreshing(false);
-    }, 1500);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchDownloads();
+  }, []);
+
+  const onRefresh = async () => {
+    fetchDownloads();
   };
 
   const formatDate = (dateString) => {

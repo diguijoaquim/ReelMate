@@ -2,8 +2,10 @@ import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import { Alert, Platform } from 'react-native';
 
-// Caminho para a pasta de status do WhatsApp no Android
-const WHATSAPP_STATUS_PATH = '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses/';
+const { StorageAccessFramework } = FileSystem;
+const ANDROID_STATUSES_INITIAL_URI = 'content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fmedia%2Fcom.whatsapp%2FWhatsApp%2FMedia%2F.Statuses';
+const ANDROID_MEDIA_PARENT_URI = 'content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fmedia%2Fcom.whatsapp%2FWhatsApp%2FMedia';
+let STATUSES_DIR_URI = null;
 
 /**
  * Solicita permissões necessárias para acessar o armazenamento
@@ -40,8 +42,50 @@ export const requestStoragePermissions = async () => {
  */
 export const checkWhatsAppDirectory = async () => {
   try {
-    const dirInfo = await FileSystem.getInfoAsync(WHATSAPP_STATUS_PATH);
-    return dirInfo.exists;
+    if (Platform.OS !== 'android') return false;
+    if (STATUSES_DIR_URI) return true;
+    // First attempt: open directly at .Statuses
+    let perm = await StorageAccessFramework.requestDirectoryPermissionsAsync(ANDROID_STATUSES_INITIAL_URI);
+    if (perm.granted) {
+      const picked = perm.directoryUri || '';
+      if (decodeURIComponent(picked).toLowerCase().includes('/android/media/com.whatsapp/whatsapp/media/.statuses')) {
+        STATUSES_DIR_URI = perm.directoryUri;
+        return true;
+      }
+      Alert.alert(
+        'Selecione a pasta correta',
+        'Por favor navegue até Android > media > com.whatsapp > WhatsApp > Media > .Statuses e confirme.',
+        [{ text: 'OK' }]
+      );
+    }
+
+    // Fallback attempt: open at Media parent to let user navigate to .Statuses
+    perm = await StorageAccessFramework.requestDirectoryPermissionsAsync(ANDROID_MEDIA_PARENT_URI);
+    if (perm.granted) {
+      const picked = perm.directoryUri || '';
+      // If user picked the parent, reprompt with guidance; if they did navigate into .Statuses, accept
+      const decoded = decodeURIComponent(picked).toLowerCase();
+      if (decoded.endsWith('/android/media/com.whatsapp/whatsapp/media/.statuses') || decoded.includes('/android/media/com.whatsapp/whatsapp/media/.statuses')) {
+        STATUSES_DIR_URI = perm.directoryUri;
+        return true;
+      }
+      Alert.alert(
+        'Selecione a pasta .Statuses',
+        'Abrimos na pasta "Media". Entre na pasta oculta .Statuses e confirme o acesso.',
+        [{ text: 'OK' }]
+      );
+      // One more prompt targeting exactly .Statuses
+      const perm2 = await StorageAccessFramework.requestDirectoryPermissionsAsync(ANDROID_STATUSES_INITIAL_URI);
+      if (perm2.granted) {
+        const picked2 = decodeURIComponent(perm2.directoryUri || '').toLowerCase();
+        if (picked2.includes('/android/media/com.whatsapp/whatsapp/media/.statuses')) {
+          STATUSES_DIR_URI = perm2.directoryUri;
+          return true;
+        }
+      }
+    }
+
+    return false;
   } catch (error) {
     console.error('Erro ao verificar diretório do WhatsApp:', error);
     return false;
@@ -57,8 +101,8 @@ export const getWhatsAppStatuses = async () => {
     const hasPermission = await requestStoragePermissions();
     if (!hasPermission) return [];
 
-    const dirExists = await checkWhatsAppDirectory();
-    if (!dirExists) {
+    const dirOk = await checkWhatsAppDirectory();
+    if (!dirOk || !STATUSES_DIR_URI) {
       Alert.alert(
         'Diretório não encontrado',
         'Não foi possível encontrar a pasta de status do WhatsApp. Verifique se o WhatsApp está instalado e se você visualizou alguns status recentemente.',
@@ -67,31 +111,26 @@ export const getWhatsAppStatuses = async () => {
       return [];
     }
 
-    // Lê os arquivos do diretório
-    const files = await FileSystem.readDirectoryAsync(WHATSAPP_STATUS_PATH);
-    
-    // Filtra apenas arquivos de imagem e vídeo
-    const mediaFiles = files.filter(file => {
-      const extension = file.toLowerCase().split('.').pop();
-      return ['jpg', 'jpeg', 'png', 'mp4', 'gif', 'webp'].includes(extension);
+    const uris = await StorageAccessFramework.readDirectoryAsync(STATUSES_DIR_URI);
+    const mediaUris = uris.filter((u) => {
+      const name = decodeURIComponent(u.split('/').pop() || '').toLowerCase();
+      return ['.jpg', '.jpeg', '.png', '.mp4', '.gif', '.webp'].some(ext => name.endsWith(ext));
     });
 
-    // Obtém informações detalhadas de cada arquivo
     const statusFiles = await Promise.all(
-      mediaFiles.map(async (file) => {
-        const fileUri = WHATSAPP_STATUS_PATH + file;
-        const fileInfo = await FileSystem.getInfoAsync(fileUri, { size: true });
-        const extension = file.toLowerCase().split('.').pop();
-        const isVideo = ['mp4'].includes(extension);
-
+      mediaUris.map(async (uri) => {
+        const nameRaw = decodeURIComponent(uri.split('/').pop() || 'status');
+        const name = nameRaw.replace(/\?[^/]*$/, '');
+        const lower = name.toLowerCase();
+        const isVideo = lower.endsWith('.mp4');
         return {
-          id: file,
-          uri: fileUri,
-          filename: file,
+          id: uri,
+          uri,
+          filename: name,
           type: isVideo ? 'video' : 'image',
-          size: fileInfo.size,
-          modificationTime: fileInfo.modificationTime || Date.now(),
-          thumbnail: fileUri, // Para imagens, a thumbnail é o próprio arquivo
+          size: undefined,
+          modificationTime: Date.now(),
+          thumbnail: uri,
         };
       })
     );
@@ -114,10 +153,20 @@ export const saveStatusToGallery = async (status) => {
     const hasPermission = await requestStoragePermissions();
     if (!hasPermission) return false;
 
-    // Cria um asset na galeria a partir do arquivo
-    const asset = await MediaLibrary.createAssetAsync(status.uri);
+    let sourceUri = status.uri;
+    let localUri = sourceUri;
+    if (sourceUri.startsWith('content://')) {
+      const filename = status.filename || `status_${Date.now()}`;
+      const ext = (filename.toLowerCase().split('.').pop() || '').replace(/[^a-z0-9]/g, '');
+      const safeName = ext ? filename : `${filename}.mp4`;
+      const cachePath = `${FileSystem.cacheDirectory}${safeName}`;
+      const base64 = await StorageAccessFramework.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
+      await FileSystem.writeAsStringAsync(cachePath, base64, { encoding: FileSystem.EncodingType.Base64 });
+      localUri = cachePath;
+    }
+
+    const asset = await MediaLibrary.createAssetAsync(localUri);
     
-    // Cria um álbum "ReelMate" se não existir e adiciona o asset a ele
     const album = await MediaLibrary.getAlbumAsync('ReelMate');
     if (album) {
       await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
