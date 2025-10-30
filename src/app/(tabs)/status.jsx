@@ -8,7 +8,8 @@ import {
   Dimensions,
   FlatList,
   ActivityIndicator,
-  Platform
+  Platform,
+  Modal
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
@@ -19,7 +20,10 @@ import {
   RefreshCw,
   FileText,
   Camera,
-  CheckCircle
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  X
 } from 'lucide-react-native';
 import Animated, { 
   FadeIn, 
@@ -27,17 +31,23 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Image as ExpoImage } from 'expo-image';
 import { COLORS } from '@/theme/colors';
-import { getWhatsAppStatuses, saveStatusToGallery, requestStoragePermissions } from '@/utils/whatsappStatus';
+import { getWhatsAppStatuses, saveStatusToGallery, requestStoragePermissions, checkWhatsAppDirectory } from '@/utils/whatsappStatus';
+import { Video } from 'expo-av';
+import { useTranslation } from 'react-i18next';
 
 const { width } = Dimensions.get('window');
 const ITEM_WIDTH = (width - 60) / 2; // 2 columns with padding
 
 export default function StatusScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const [statuses, setStatuses] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastScanned, setLastScanned] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
+  const [hasDirAccess, setHasDirAccess] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // Removed refresh animation to avoid potential reanimated freezes
 
@@ -106,6 +116,7 @@ export default function StatusScreen() {
       
       if (whatsappStatuses.length > 0) {
         setStatuses(whatsappStatuses);
+        setHasDirAccess(true);
       } else {
         // Se não encontrou status reais, usa os dados de fallback
         setStatuses(fallbackStatuses);
@@ -120,6 +131,20 @@ export default function StatusScreen() {
       setIsLoading(false);
     }
   };
+
+  // Preview helpers
+  const currentItem = statuses.length ? statuses[Math.max(0, Math.min(currentIndex, statuses.length - 1))] : null;
+  const isCurrentVideo = currentItem?.type === 'video';
+  const canPlayVideo = isCurrentVideo && typeof currentItem?.uri === 'string' && currentItem.uri.startsWith('file://');
+
+  // Auto-advance images every 5s (like WhatsApp) only when preview is open and current is image
+  useEffect(() => {
+    if (!isPreviewOpen || !currentItem || isCurrentVideo) return;
+    const id = setTimeout(() => {
+      setCurrentIndex((i) => (statuses.length ? (i + 1) % statuses.length : 0));
+    }, 5000);
+    return () => clearTimeout(id);
+  }, [isPreviewOpen, currentItem, isCurrentVideo, statuses.length]);
 
   useEffect(() => {
     scanStatuses();
@@ -190,7 +215,10 @@ export default function StatusScreen() {
       }}
     >
       <TouchableOpacity
-        onPress={() => handleDownloadStatus(item)}
+        onPress={() => {
+          setCurrentIndex(index);
+          setIsPreviewOpen(true);
+        }}
         activeOpacity={0.9}
         style={{
           backgroundColor: '#1a1a1a',
@@ -338,7 +366,7 @@ export default function StatusScreen() {
         marginBottom: 8,
         textAlign: 'center',
       }}>
-        No Statuses Found
+        {t('status.emptyTitle')}
       </Text>
       <Text style={{
         fontSize: 14,
@@ -346,7 +374,7 @@ export default function StatusScreen() {
         textAlign: 'center',
         lineHeight: 20,
       }}>
-        Nenhum status do WhatsApp foi encontrado. Verifique se o WhatsApp está instalado e se você visualizou alguns status recentemente.
+        {t('status.emptyText')}
       </Text>
     </Animated.View>
   );
@@ -363,8 +391,8 @@ export default function StatusScreen() {
         showsVerticalScrollIndicator={false}
         bounces={Platform.OS === "android"}
         overScrollMode={Platform.OS === "android" ? "always" : "auto"}
-        ListHeaderComponent={
-          <>
+        ListHeaderComponent={(statuses.length > 0 || isLoading || !hasDirAccess) ? (
+          <React.Fragment>
             {/* Header Section */}
             <Animated.View 
               entering={FadeIn.delay(200)}
@@ -383,14 +411,14 @@ export default function StatusScreen() {
                   color: '#fff',
                   marginBottom: 8,
                 }}>
-                  WhatsApp Status
+                  {t('status.headerTitle')}
                 </Text>
                 <Text style={{
                   fontSize: 16,
                   color: '#666',
                   lineHeight: 22,
                 }}>
-                  Save WhatsApp statuses to your device
+                  {t('status.headerSubtitle')}
                 </Text>
                 {lastScanned && (
                   <Text style={{
@@ -398,7 +426,7 @@ export default function StatusScreen() {
                     color: '#444',
                     marginTop: 4,
                   }}>
-                    Last scanned: {lastScanned.toLocaleTimeString()}
+                    {t('status.lastScanned', { time: lastScanned.toLocaleTimeString() })}
                   </Text>
                 )}
               </View>
@@ -417,10 +445,58 @@ export default function StatusScreen() {
                 }}
                 activeOpacity={0.7}
               >
-              <RefreshCw size={20} color={COLORS.accent} />
+                <RefreshCw size={20} color={COLORS.accent} />
               </TouchableOpacity>
             </Animated.View>
 
+            {/* Permission/Access Helper */}
+            {!hasDirAccess && (
+              <Animated.View
+                entering={FadeInUp.delay(250)}
+                style={{ paddingHorizontal: 20, marginBottom: 16 }}
+              >
+                <View
+                  style={{
+                    backgroundColor: '#1a1a1a',
+                    borderRadius: 12,
+                    padding: 16,
+                    borderLeftWidth: 4,
+                    borderLeftColor: COLORS.accent,
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: 8 }}>
+                    {t('status.accessTitle')}
+                  </Text>
+                  <Text style={{ color: '#999', fontSize: 13, lineHeight: 18, marginBottom: 12 }}>
+                    {t('status.accessText')}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      try {
+                        const ok = await checkWhatsAppDirectory();
+                        if (ok) {
+                          setHasDirAccess(true);
+                          await scanStatuses();
+                        }
+                      } catch {}
+                    }}
+                    style={{
+                      backgroundColor: COLORS.accent,
+                      borderRadius: 10,
+                      paddingVertical: 12,
+                      alignItems: 'center',
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>
+                      {t('status.accessButton')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>
+            )}
+
+            
             {/* Stats Section */}
             <Animated.View 
               entering={FadeInUp.delay(300)}
@@ -448,7 +524,7 @@ export default function StatusScreen() {
                     color: '#fff',
                     marginLeft: 12,
                   }}>
-                    Status Folder
+                    {t('status.statsFolder')}
                   </Text>
                 </View>
                 <Text style={{
@@ -456,14 +532,88 @@ export default function StatusScreen() {
                   color: '#666',
                   lineHeight: 20,
                 }}>
-                  Found {statuses.length} items in WhatsApp status folder
+                  {t('status.statsFound', { count: statuses.length })}
                 </Text>
               </View>
-            </Animated.View>
-          </>
-        }
-        ListEmptyComponent={!isLoading ? <EmptyState /> : null}
-      />
-    </View>
-  );
-}
+          </Animated.View>
+          </React.Fragment>
+        ) : null}
+      ListEmptyComponent={!isLoading ? <EmptyState /> : null}
+    />
+
+    {/* Fullscreen Preview Modal */}
+    <Modal
+      visible={isPreviewOpen}
+      animationType="fade"
+      presentationStyle="fullScreen"
+      onRequestClose={() => setIsPreviewOpen(false)}
+    >
+      <View style={{ flex: 1, backgroundColor: '#000' }}>
+        {/* Top bar */}
+        <View style={{ paddingTop: insets.top + 8, paddingHorizontal: 16, paddingBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <TouchableOpacity onPress={() => setIsPreviewOpen(false)} style={{ padding: 10, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10 }}>
+            <X size={18} color="#fff" />
+          </TouchableOpacity>
+          <Text style={{ color: '#aaa', fontSize: 12 }}>{currentIndex + 1} / {statuses.length}</Text>
+        </View>
+
+        {/* Media area */}
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: '100%', aspectRatio: 9/16, backgroundColor: '#000' }}>
+            {canPlayVideo ? (
+              <Video
+                source={{ uri: currentItem?.uri }}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="contain"
+                shouldPlay
+                isLooping={false}
+                useNativeControls
+                onPlaybackStatusUpdate={(status) => {
+                  if (status.isLoaded && status.didJustFinish) {
+                    setCurrentIndex((i) => (i + 1) % statuses.length);
+                  }
+                }}
+              />
+            ) : (
+              <ExpoImage
+                source={{ uri: currentItem?.thumbnail }}
+                style={{ width: '100%', height: '100%' }}
+                contentFit="contain"
+                transition={200}
+              />
+            )}
+          </View>
+        </View>
+
+        {/* Bottom controls */}
+        <View style={{ paddingBottom: insets.bottom + 12, paddingHorizontal: 16, paddingTop: 8 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <TouchableOpacity
+              onPress={() => setCurrentIndex((i) => (i - 1 + statuses.length) % statuses.length)}
+              style={{ paddingVertical: 12, paddingHorizontal: 16, backgroundColor: '#111', borderRadius: 10 }}
+              activeOpacity={0.85}
+            >
+              <ChevronLeft size={20} color="#fff" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => handleDownloadStatus(currentItem)}
+              style={{ paddingVertical: 12, paddingHorizontal: 24, backgroundColor: COLORS.accent, borderRadius: 10 }}
+              activeOpacity={0.9}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>{t('status.download')}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setCurrentIndex((i) => (i + 1) % statuses.length)}
+              style={{ paddingVertical: 12, paddingHorizontal: 16, backgroundColor: '#111', borderRadius: 10 }}
+              activeOpacity={0.85}
+            >
+              <ChevronRight size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  </View>
+);}

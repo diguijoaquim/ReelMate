@@ -8,7 +8,8 @@ import {
   FlatList,
   Share,
   Dimensions,
-  Platform
+  Platform,
+  RefreshControl
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
@@ -20,7 +21,8 @@ import {
   HardDrive,
   MoreVertical,
   Search,
-  Filter
+  Filter,
+  X
 } from 'lucide-react-native';
 import Animated, { 
   FadeIn, 
@@ -32,80 +34,63 @@ import Animated, {
   withTiming
 } from 'react-native-reanimated';
 import { Image as ExpoImage } from 'expo-image';
+import { Video } from 'expo-av';
 import { COLORS } from '@/theme/colors';
+import { listDownloadedVideos } from '@/utils/metaVideos';
+import { useFocusEffect } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 
 const { width } = Dimensions.get('window');
 
 export default function DownloadedScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const [downloads, setDownloads] = useState([]);
   const [filter, setFilter] = useState('all'); // all, videos, images
   const [sortBy, setSortBy] = useState('newest'); // newest, oldest, size
+  const [refreshing, setRefreshing] = useState(false);
+  const [isPlayerOpen, setIsPlayerOpen] = useState(false);
+  const [currentItem, setCurrentItem] = useState(null);
 
   const filterOpacity = useSharedValue(1);
 
-  // Mock downloaded files data
-  const mockDownloads = [
-    {
-      id: '1',
-      type: 'video',
-      title: '2M views · 70K reactions | Huyu ni nani alirudishiwa kofia yake',
-      thumbnail: 'https://picsum.photos/400/300?random=1',
-      source: 'Facebook',
-      size: '15.2 MB',
-      duration: '0:42',
-      downloadedAt: Date.now() - 1000 * 60 * 30, // 30 minutes ago
-      quality: 'HD',
-    },
-    {
-      id: '2',
-      type: 'video',
-      title: 'Amazing sunset timelapse from my balcony',
-      thumbnail: 'https://picsum.photos/400/300?random=2',
-      source: 'Instagram',
-      size: '8.7 MB',
-      duration: '0:25',
-      downloadedAt: Date.now() - 1000 * 60 * 60 * 2, // 2 hours ago
-      quality: 'HD',
-    },
-    {
-      id: '3',
-      type: 'video',
-      title: 'Funny cat compilation that will make you laugh',
-      thumbnail: 'https://picsum.photos/400/300?random=3',
-      source: 'Facebook',
-      size: '22.1 MB',
-      duration: '1:15',
-      downloadedAt: Date.now() - 1000 * 60 * 60 * 5, // 5 hours ago
-      quality: 'HD',
-    },
-    {
-      id: '4',
-      type: 'video',
-      title: 'Street food tour in Bangkok - must watch!',
-      thumbnail: 'https://picsum.photos/400/300?random=4',
-      source: 'Instagram',
-      size: '31.5 MB',
-      duration: '2:03',
-      downloadedAt: Date.now() - 1000 * 60 * 60 * 24, // 1 day ago
-      quality: 'HD',
-    },
-    {
-      id: '5',
-      type: 'video',
-      title: 'Quick workout routine for busy people',
-      thumbnail: 'https://picsum.photos/400/300?random=5',
-      source: 'Facebook',
-      size: '12.8 MB',
-      duration: '0:58',
-      downloadedAt: Date.now() - 1000 * 60 * 60 * 24 * 2, // 2 days ago
-      quality: 'SD',
-    },
-  ];
+  const fetchDownloads = async () => {
+    try {
+      setRefreshing(true);
+      const items = await listDownloadedVideos();
+      const mapped = items.map((it) => ({
+        id: it.id,
+        type: 'video',
+        title: it.title,
+        thumbnail: 'https://picsum.photos/400/300?random=99',
+        source: 'Local',
+        size: it.fileSize || '-',
+        duration: undefined,
+        downloadedAt: new Date(it.downloadDate).getTime(),
+        quality: it.quality || 'unknown',
+        url: it.url,
+      }));
+      setDownloads(mapped);
+    } catch (e) {
+      setDownloads([]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    setDownloads(mockDownloads);
+    fetchDownloads();
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchDownloads();
+    }, [])
+  );
+
+  const onRefresh = () => {
+    fetchDownloads();
+  };
 
   const formatTimestamp = (timestamp) => {
     const now = new Date();
@@ -197,7 +182,7 @@ export default function DownloadedScreen() {
         overflow: 'hidden',
       }}
     >
-      <TouchableOpacity activeOpacity={0.9}>
+      <TouchableOpacity activeOpacity={0.9} onPress={() => { setCurrentItem(item); setIsPlayerOpen(true); }}>
         <View style={{ flexDirection: 'row' }}>
           {/* Thumbnail */}
           <View style={{ position: 'relative' }}>
@@ -235,7 +220,7 @@ export default function DownloadedScreen() {
             </View>
 
             {/* Duration */}
-            <View style={{
+            {item.duration ? (<View style={{
               position: 'absolute',
               bottom: 6,
               right: 6,
@@ -251,7 +236,7 @@ export default function DownloadedScreen() {
               }}>
                 {item.duration}
               </Text>
-            </View>
+            </View>) : null}
           </View>
 
           {/* Content */}
@@ -275,7 +260,7 @@ export default function DownloadedScreen() {
               marginBottom: 8,
             }}>
               <View style={{
-                backgroundColor: item.source === 'Facebook' ? '#1877F2' : '#E4405F',
+                backgroundColor: item.source === 'Facebook' ? '#1877F2' : (item.source === 'Instagram' ? '#E4405F' : COLORS.accent),
                 paddingHorizontal: 6,
                 paddingVertical: 2,
                 borderRadius: 4,
@@ -405,12 +390,36 @@ export default function DownloadedScreen() {
       flex: 1, 
       backgroundColor: '#000',
     }}>
+      {/* Fullscreen player */}
+      {isPlayerOpen && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', zIndex: 10 }}>
+          <View style={{ paddingTop: insets.top + 8, paddingHorizontal: 16, paddingBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <TouchableOpacity onPress={() => setIsPlayerOpen(false)} style={{ padding: 10, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10 }}>
+              <X size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+          <View style={{ flex: 1 }}>
+            {currentItem?.url ? (
+              <Video
+                source={{ uri: currentItem.url }}
+                style={{ flex: 1 }}
+                resizeMode="contain"
+                shouldPlay
+                useNativeControls
+              />
+            ) : null}
+          </View>
+        </View>
+      )}
       <ScrollView 
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingBottom: insets.bottom + 20,
         }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.accent} colors={[COLORS.accent]} />
+        }
         bounces={Platform.OS === "android"}
         overScrollMode={Platform.OS === "android" ? "always" : "auto"}
       >
@@ -428,14 +437,14 @@ export default function DownloadedScreen() {
             color: '#fff',
             marginBottom: 8,
           }}>
-            Downloaded
+            {t('downloaded.headerTitle')}
           </Text>
           <Text style={{
             fontSize: 16,
             color: '#666',
             lineHeight: 22,
           }}>
-            Manage your downloaded videos
+            {t('downloaded.headerSubtitle')}
           </Text>
         </Animated.View>
 
@@ -472,7 +481,7 @@ export default function DownloadedScreen() {
                   fontSize: 12,
                   color: '#666',
                 }}>
-                  Videos
+                  {t('downloaded.statsVideos')}
                 </Text>
               </View>
               
@@ -496,7 +505,7 @@ export default function DownloadedScreen() {
                   fontSize: 12,
                   color: '#666',
                 }}>
-                  Total Size
+                  {t('downloaded.statsTotalSize')}
                 </Text>
               </View>
             </View>
@@ -517,7 +526,7 @@ export default function DownloadedScreen() {
             color: '#fff',
             marginBottom: 12,
           }}>
-            Filter by:
+            {t('downloaded.filterBy')}
           </Text>
           <ScrollView 
             horizontal 
@@ -526,25 +535,25 @@ export default function DownloadedScreen() {
           >
             <FilterButton
               value="all"
-              label="All"
+              label={t('downloaded.filterAll')}
               isSelected={filter === 'all'}
               onPress={() => setFilter('all')}
             />
             <FilterButton
               value="videos"
-              label="Videos"
+              label={t('downloaded.filterVideos')}
               isSelected={filter === 'videos'}
               onPress={() => setFilter('videos')}
             />
             <FilterButton
               value="facebook"
-              label="Facebook"
+              label={t('downloaded.filterFacebook')}
               isSelected={filter === 'facebook'}
               onPress={() => setFilter('facebook')}
             />
             <FilterButton
               value="instagram"
-              label="Instagram"
+              label={t('downloaded.filterInstagram')}
               isSelected={filter === 'instagram'}
               onPress={() => setFilter('instagram')}
             />
@@ -580,16 +589,16 @@ export default function DownloadedScreen() {
             <TouchableOpacity
               onPress={() => {
                 Alert.alert(
-                  'Clear All Downloads',
-                  'Are you sure you want to delete all downloaded videos?',
+                  t('downloaded.clearAll'),
+                  t('downloaded.clearAll'),
                   [
                     { text: 'Cancel', style: 'cancel' },
                     {
-                      text: 'Clear All',
+                      text: t('downloaded.clearAll'),
                       style: 'destructive',
                       onPress: () => {
                         setDownloads([]);
-                        Alert.alert('Success', 'All downloads cleared');
+                        Alert.alert('Success', t('downloaded.clearAll'));
                       }
                     }
                   ]
@@ -610,7 +619,7 @@ export default function DownloadedScreen() {
                 fontSize: 15,
                 fontWeight: '600',
               }}>
-                Clear All Downloads
+                {t('downloaded.clearAll')}
               </Text>
             </TouchableOpacity>
           </Animated.View>

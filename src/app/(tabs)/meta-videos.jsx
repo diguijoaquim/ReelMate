@@ -6,8 +6,10 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  ScrollView,
+  Image,
 } from "react-native";
-import NativeScrollView from "@/components/NativeScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Platform } from "react-native";
 import { Download, Link, Play, Eye, CheckCircle } from "lucide-react-native";
@@ -20,16 +22,21 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { useMutation } from "@tanstack/react-query";
-import KeyboardAvoidingAnimatedView from "@/components/KeyboardAvoidingAnimatedView";
 import { COLORS } from "@/theme/colors";
  import { downloadMetaVideo, requestStoragePermissions } from "@/utils/metaVideos";
+import { Video } from "expo-av";
+import AppDialog from "@/components/AppDialog";
+import { useTranslation } from "react-i18next";
 
 export default function MetaVideosScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const [url, setUrl] = useState("");
   const [videoData, setVideoData] = useState(null);
   const [selectedQuality, setSelectedQuality] = useState("best_quality");
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [showBlockedDialog, setShowBlockedDialog] = useState(false);
 
   const buttonScale = useSharedValue(1);
 
@@ -57,6 +64,7 @@ export default function MetaVideosScreen() {
     },
     onSuccess: (data) => {
       setVideoData(data);
+      setIsPreviewPlaying(false);
     },
     onError: (error) => {
       Alert.alert(
@@ -83,10 +91,7 @@ export default function MetaVideosScreen() {
       if (result && result.success) {
         Alert.alert(
           "Sucesso", 
-          `Vídeo baixado com sucesso! Você pode encontrá-lo em:
-
-1. Galeria de fotos no álbum "ReelMate"
-2. Pasta de Downloads/ReelMate no armazenamento interno`
+          `Vídeo baixado com sucesso!`
         );
       } else {
         Alert.alert(
@@ -106,30 +111,49 @@ export default function MetaVideosScreen() {
   });
 
   const handleFetchVideo = () => {
-    if (!url.trim()) {
+    const raw = url.trim();
+    if (!raw) {
       Alert.alert("Error", "Please enter a valid Facebook or Instagram URL");
       return;
     }
 
+    // Bloqueia links do YouTube
+    const lower = raw.toLowerCase();
+    if (lower.includes("youtube.com") || lower.includes("youtu.be")) {
+      setShowBlockedDialog(true);
+      return;
+    }
+
     if (
-      !url.includes("facebook.com") &&
-      !url.includes("instagram.com") &&
-      !url.includes("fb.com")
+      !lower.includes("facebook.com") &&
+      !lower.includes("instagram.com") &&
+      !lower.includes("fb.com")
     ) {
       Alert.alert("Error", "Please enter a valid Facebook or Instagram URL");
       return;
     }
 
     handleButtonPress();
-    fetchVideoMutation.mutate(url.trim());
+    fetchVideoMutation.mutate(raw);
   };
 
   const handleDownload = async () => {
     if (!videoData) return;
 
+    const raw = url.trim().toLowerCase();
+    if (raw.includes("youtube.com") || raw.includes("youtu.be")) {
+      setShowBlockedDialog(true);
+      return;
+    }
+
     const downloadUrl = videoData[selectedQuality];
     downloadMutation.mutate({ url: downloadUrl, quality: selectedQuality });
   };
+
+  const previewUrl = videoData
+    ? videoData.best_quality || videoData.medium_quality || videoData.url
+    : null;
+  const poster = videoData?.thumbnail || videoData?.thumb || undefined;
 
   const QualityButton = ({ quality, label, isSelected, onPress }) => (
     <TouchableOpacity
@@ -163,22 +187,29 @@ export default function MetaVideosScreen() {
   );
 
   return (
-    <KeyboardAvoidingAnimatedView style={{ flex: 1 }} behavior="padding">
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "#000",
-        }}
+    <View style={{ flex: 1, backgroundColor: "#000" }}>
+      <AppDialog
+        visible={showBlockedDialog}
+        title={t('dialogs.ytBlockedTitle')}
+        message={t('dialogs.ytBlockedText')}
+        onClose={() => setShowBlockedDialog(false)}
+        confirmLabel={t('actions.ok')}
+      />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-        <NativeScrollView
+        <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{
             paddingBottom: insets.bottom + 20,
+            flexGrow: 1,
           }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          bounces={Platform.OS === "android"}
-          overScrollMode={Platform.OS === "android" ? "always" : "auto"}
+          bounces={true}
+          alwaysBounceVertical={true}
         >
           {/* Header Section */}
           <Animated.View
@@ -196,7 +227,7 @@ export default function MetaVideosScreen() {
                 marginBottom: 8,
               }}
             >
-              Download Videos
+              {t('meta.headerTitle')}
             </Text>
             <Text
               style={{
@@ -205,7 +236,7 @@ export default function MetaVideosScreen() {
                 lineHeight: 22,
               }}
             >
-              Paste your Facebook or Instagram video URL below to download
+              {t('meta.headerSubtitle')}
             </Text>
           </Animated.View>
 
@@ -237,7 +268,7 @@ export default function MetaVideosScreen() {
                   color: "#fff",
                   paddingVertical: 16,
                 }}
-                placeholder="Paste Facebook or Instagram URL here..."
+                placeholder={t('meta.inputPlaceholder')}
                 placeholderTextColor="#666"
                 value={url}
                 onChangeText={setUrl}
@@ -286,8 +317,8 @@ export default function MetaVideosScreen() {
                 }}
               >
                 {fetchVideoMutation.isPending
-                  ? "Fetching..."
-                  : "Get Video Info"}
+                  ? t('meta.fetching')
+                  : t('meta.getInfo')}
               </Text>
             </TouchableOpacity>
           </Animated.View>
@@ -310,6 +341,68 @@ export default function MetaVideosScreen() {
                   borderColor: "#333",
                 }}
               >
+                <View
+                  style={{
+                    borderRadius: 10,
+                    overflow: "hidden",
+                    backgroundColor: "#000",
+                    marginBottom: 16,
+                  }}
+                >
+                  <View style={{ width: "100%", aspectRatio: 16 / 9 }}>
+                    {isPreviewPlaying && previewUrl ? (
+                      <Video
+                        source={{ uri: previewUrl }}
+                        style={{ width: "100%", height: "100%" }}
+                        resizeMode="contain"
+                        shouldPlay
+                        useNativeControls
+                        onError={() => {}}
+                      />
+                    ) : (
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        onPress={() => setIsPreviewPlaying(true)}
+                        style={{
+                          flex: 1,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: "100%",
+                          height: "100%",
+                          backgroundColor: "#000",
+                        }}
+                      >
+                        {poster ? (
+                          <Image
+                            source={{ uri: poster }}
+                            style={{
+                              position: "absolute",
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              width: "100%",
+                              height: "100%",
+                            }}
+                            resizeMode="cover"
+                          />
+                        ) : null}
+                        <View
+                          style={{
+                            width: 64,
+                            height: 64,
+                            borderRadius: 32,
+                            backgroundColor: COLORS.accent,
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Play color="#fff" size={28} />
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
                 {/* Video Title */}
                 <View
                   style={{
@@ -344,7 +437,7 @@ export default function MetaVideosScreen() {
                     marginBottom: 12,
                   }}
                 >
-                  Choose Quality:
+                  {t('meta.chooseQuality')}
                 </Text>
 
                 <View
@@ -355,13 +448,13 @@ export default function MetaVideosScreen() {
                 >
                   <QualityButton
                     quality="best_quality"
-                    label="Best Quality"
+                    label={t('meta.qualityBest')}
                     isSelected={selectedQuality === "best_quality"}
                     onPress={() => setSelectedQuality("best_quality")}
                   />
                   <QualityButton
                     quality="medium_quality"
-                    label="Medium Quality"
+                    label={t('meta.qualityMedium')}
                     isSelected={selectedQuality === "medium_quality"}
                     onPress={() => setSelectedQuality("medium_quality")}
                   />
@@ -396,7 +489,7 @@ export default function MetaVideosScreen() {
                             fontWeight: "600",
                           }}
                         >
-                          Downloading... {downloadProgress}%
+                          {`Downloading... ${downloadProgress}%`}
                         </Text>
                       </>
                     ) : (
@@ -413,7 +506,7 @@ export default function MetaVideosScreen() {
                             fontWeight: "600",
                           }}
                         >
-                          Download Video
+                          {t('meta.downloadButton')}
                         </Text>
                       </>
                     )}
@@ -448,7 +541,7 @@ export default function MetaVideosScreen() {
                   marginBottom: 12,
                 }}
               >
-                How to use:
+                {t('meta.howToUseTitle')}
               </Text>
               <Text
                 style={{
@@ -457,16 +550,12 @@ export default function MetaVideosScreen() {
                   lineHeight: 20,
                 }}
               >
-                1. Copy the video URL from Facebook or Instagram{"\n"}
-                2. Paste it in the input field above{"\n"}
-                3. Tap "Get Video Info" to fetch video details{"\n"}
-                4. Choose your preferred quality{"\n"}
-                5. Tap "Download Video" to save it to your device
-          </Text>
+                {t('meta.howToUseSteps')}
+              </Text>
             </View>
           </Animated.View>
-        </NativeScrollView>
-      </View>
-    </KeyboardAvoidingAnimatedView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }

@@ -5,20 +5,24 @@ import { COLORS } from '@/theme/colors';
 import { ArrowLeft, Github, Globe, Mail } from 'lucide-react-native';
 import { TouchableOpacity } from 'react-native-gesture-handler';
 import { router } from 'expo-router';
-import Animated, { FadeIn, SlideInUp } from 'react-native-reanimated';
+import { useTranslation } from 'react-i18next';
 
 export default function AboutScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
 
   const appFeatures = [
-    'Download de vídeos do Instagram, Facebook e TikTok',
+    t('about.features.downloadVideos'),
+    t('about.features.downloadManagement'),
+    t('about.features.intuitiveInterface'),
+    t('about.features.videoFormats'),
+    t('about.features.easySharing'),
     'Gerenciamento de downloads com histórico completo',
     'Interface intuitiva e moderna',
     'Suporte para múltiplos formatos de vídeo',
     'Compartilhamento fácil para outras plataformas'
   ];
 
-  // Informação simplificada sobre a equipe
   const teamInfo = {
     name: 'BlueSpark MZ',
     description: 'Equipe de desenvolvimento especializada em aplicativos móveis'
@@ -27,8 +31,7 @@ export default function AboutScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
       {/* Header */}
-      <Animated.View 
-        entering={FadeIn.duration(300)}
+      <View 
         style={{
           paddingTop: insets.top,
           paddingHorizontal: 20,
@@ -61,17 +64,16 @@ export default function AboutScreen() {
           fontWeight: 'bold',
           color: COLORS.text,
         }}>
-          Sobre Nós
+          {t('about.title')}
         </Text>
-      </Animated.View>
+      </View>
 
       <ScrollView 
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 20 }}
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View 
-          entering={SlideInUp.delay(100).duration(500)}
+        <View 
           style={{
             alignItems: 'center',
             marginBottom: 30,
@@ -81,18 +83,15 @@ export default function AboutScreen() {
             width: 100,
             height: 100,
             borderRadius: 50,
-            backgroundColor: COLORS.surface,
             alignItems: 'center',
             justifyContent: 'center',
             marginBottom: 16,
           }}>
-            <Text style={{
-              fontSize: 40,
-              fontWeight: 'bold',
-              color: COLORS.accent,
-            }}>
-              RM
-            </Text>
+            <Image
+              source={require('../../assets/images/icon.png')}
+              style={{ width: 100, height: 100, borderRadius: 50 }}
+              resizeMode="contain"
+            />
           </View>
           
           <Text style={{
@@ -112,10 +111,9 @@ export default function AboutScreen() {
           }}>
             Versão 1.0.0
           </Text>
-        </Animated.View>
+        </View>
 
-        <Animated.View 
-          entering={SlideInUp.delay(200).duration(500)}
+        <View 
           style={{
             backgroundColor: COLORS.surface,
             borderRadius: 12,
@@ -129,103 +127,20 @@ export default function AboutScreen() {
             color: COLORS.text,
             marginBottom: 12,
           }}>
-            Nossa Missão
+            {t('about.missionTitle')}
           </Text>
           
           <Text style={{
             fontSize: 15,
             color: COLORS.textMuted,
             lineHeight: 22,
+            textAlign: 'center',
           }}>
-            O ReelMate foi criado com a missão de simplificar o download e gerenciamento de vídeos das redes sociais. Nosso objetivo é proporcionar uma experiência intuitiva e eficiente para os amantes de conteúdo digital.
+            {t('about.missionText')}
           </Text>
-        </Animated.View>
+        </View>
 
-        <Animated.View 
-          entering={SlideInUp.delay(300).duration(500)}
-          style={{
-            backgroundColor: COLORS.surface,
-            borderRadius: 12,
-            padding: 20,
-            marginBottom: 20,
-          }}
-        >
-          <Text style={{
-            fontSize: 18,
-            fontWeight: 'bold',
-            color: COLORS.text,
-            marginBottom: 12,
-          }}>
-            Recursos Principais
-          </Text>
-          
-          {appFeatures.map((feature, index) => (
-            <View 
-              key={index}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginBottom: index < appFeatures.length - 1 ? 12 : 0,
-              }}
-            >
-              <View style={{
-                width: 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: COLORS.accent,
-                marginRight: 12,
-              }} />
-              <Text style={{
-                fontSize: 14,
-                color: COLORS.textMuted,
-              }}>
-                {feature}
-              </Text>
-            </View>
-          ))}
-        </Animated.View>
-
-        <Animated.View 
-          entering={SlideInUp.delay(400).duration(500)}
-          style={{
-            backgroundColor: COLORS.surface,
-            borderRadius: 12,
-            padding: 20,
-            marginBottom: 20,
-          }}
-        >
-          <Text style={{
-            fontSize: 18,
-            fontWeight: 'bold',
-            color: COLORS.text,
-            marginBottom: 16,
-          }}>
-            Nossa Equipe
-          </Text>
-          
-          <View style={{ alignItems: 'center' }}>
-            <Text style={{
-              fontSize: 16,
-              fontWeight: '600',
-              color: COLORS.text,
-              marginBottom: 8,
-              textAlign: 'center'
-            }}>
-              {teamInfo.name}
-            </Text>
-            
-            <Text style={{
-              fontSize: 14,
-              color: COLORS.textMuted,
-              textAlign: 'center'
-            }}>
-              {teamInfo.description}
-            </Text>
-          </View>
-        </Animated.View>
-
-        <Animated.View 
-          entering={SlideInUp.delay(500).duration(500)}
+        <View 
           style={{
             backgroundColor: COLORS.surface,
             borderRadius: 12,
@@ -238,74 +153,35 @@ export default function AboutScreen() {
             fontSize: 18,
             fontWeight: 'bold',
             color: COLORS.text,
-            marginBottom: 16,
+            marginBottom: 12,
             textAlign: 'center',
           }}>
-            Entre em Contato
+            {t('about.teamTitle')}
           </Text>
-          
-          <View style={{
-            flexDirection: 'row',
-            justifyContent: 'center',
-            marginBottom: 16,
+          <Text style={{
+            fontSize: 15,
+            color: COLORS.textMuted,
+            textAlign: 'center'
           }}>
-            <TouchableOpacity
-              onPress={() => Linking.openURL('mailto:contato@reelmate.com')}
-              style={{
-                width: 50,
-                height: 50,
-                borderRadius: 25,
-                backgroundColor: COLORS.bg,
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginHorizontal: 10,
-              }}
-              activeOpacity={0.7}
-            >
-              <Mail color={COLORS.accent} size={22} />
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              onPress={() => Linking.openURL('https://github.com/reelmate')}
-              style={{
-                width: 50,
-                height: 50,
-                borderRadius: 25,
-                backgroundColor: COLORS.bg,
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginHorizontal: 10,
-              }}
-              activeOpacity={0.7}
-            >
-              <Github color={COLORS.accent} size={22} />
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              onPress={() => Linking.openURL('https://reelmate.com')}
-              style={{
-                width: 50,
-                height: 50,
-                borderRadius: 25,
-                backgroundColor: COLORS.bg,
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginHorizontal: 10,
-              }}
-              activeOpacity={0.7}
-            >
-              <Globe color={COLORS.accent} size={22} />
-            </TouchableOpacity>
-          </View>
-          
+            {t('about.teamName')}
+          </Text>
+          <Text style={{
+            fontSize: 12,
+            color: '#444',
+            textAlign: 'center',
+            marginTop: 8,
+          }}>
+            Made with ❤️ by <Text style={{ color: COLORS.accent, fontWeight: '700' }}>BlueSpark MZ</Text>
+          </Text>
           <Text style={{
             fontSize: 14,
             color: COLORS.textMuted,
             textAlign: 'center',
+            marginTop: 16,
           }}>
-            © 2023 ReelMate. Todos os direitos reservados.
+            {t('about.rights')}
           </Text>
-        </Animated.View>
+        </View>
       </ScrollView>
     </View>
   );

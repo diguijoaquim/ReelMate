@@ -13,16 +13,19 @@ import {
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import Animated, { FadeIn, SlideInLeft } from 'react-native-reanimated';
+import { useTranslation } from 'react-i18next';
 
 export default function DrawerMenu({ onClose }) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
 
   const menuItems = [
-    { icon: Settings, label: 'Settings', onPress: () => {} },
-    { icon: Star, label: 'Rate App', onPress: () => {} },
-    { icon: Share, label: 'Share App', onPress: () => {} },
-    { icon: HelpCircle, label: 'Help & Support', onPress: () => {} },
-    { icon: Info, label: 'About', onPress: () => router.push('/about') },
+    { icon: Settings, label: t('drawer.settings'), onPress: () => router.push('/settings') },
+    { icon: Star, label: t('drawer.rate'), onPress: () => {} },
+    { icon: Share, label: t('drawer.share'), onPress: () => {} },
+    { icon: HelpCircle, label: t('drawer.help'), onPress: () => {} },
+    { icon: Info, label: t('drawer.privacy'), onPress: () => router.push('/privacy') },
+    { icon: Info, label: t('drawer.about'), onPress: () => router.push('/about') },
   ];
 
   return (
@@ -51,13 +54,13 @@ export default function DrawerMenu({ onClose }) {
             color: '#fff',
             marginBottom: 4,
           }}>
-            Menu
+            {t('drawer.menu')}
           </Text>
           <Text style={{
             fontSize: 14,
             color: '#666',
           }}>
-            Welcome back!
+            {t('drawer.welcome')}
           </Text>
         </View>
         <TouchableOpacity
@@ -134,7 +137,7 @@ export default function DrawerMenu({ onClose }) {
           color: '#666',
           textAlign: 'center',
         }}>
-          ReelMate v1.0.0
+          {t('drawer.version', { version: '1.0.0' })}
         </Text>
         <Text style={{
           fontSize: 11,
@@ -142,7 +145,7 @@ export default function DrawerMenu({ onClose }) {
           textAlign: 'center',
           marginTop: 4,
         }}>
-          Made with ❤️ for video lovers
+          {t('drawer.tagline', { team: 'BlueSpark MZ' })}
         </Text>
       </View>
     </Animated.View>

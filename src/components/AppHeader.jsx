@@ -1,12 +1,16 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Menu, Settings } from 'lucide-react-native';
+import { Menu, Heart } from 'lucide-react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { COLORS } from '@/theme/colors';
+import AppDialog from '@/components/AppDialog';
+import { useTranslation } from 'react-i18next';
 
 export default function AppHeader({ onMenuPress }) {
   const insets = useSafeAreaInsets();
+  const [showLoveDialog, setShowLoveDialog] = React.useState(false);
+  const { t } = useTranslation();
 
   return (
     <Animated.View 
@@ -57,6 +61,7 @@ export default function AppHeader({ onMenuPress }) {
       </View>
 
       <TouchableOpacity
+        onPress={() => setShowLoveDialog(true)}
         style={{
           width: 44,
           height: 44,
@@ -67,8 +72,16 @@ export default function AppHeader({ onMenuPress }) {
         }}
         activeOpacity={0.7}
       >
-        <Settings color="#666" size={18} />
+        <Heart color={COLORS.accent} size={18} fill={COLORS.accent} />
       </TouchableOpacity>
+
+      <AppDialog
+        visible={showLoveDialog}
+        title={t('dialogs.loveTitle')}
+        message={t('dialogs.loveMessage')}
+        onClose={() => setShowLoveDialog(false)}
+        confirmLabel={t('actions.close')}
+      />
     </Animated.View>
   );
 }

@@ -29,9 +29,11 @@ import Animated, {
 } from 'react-native-reanimated';
 import { COLORS } from '@/theme/colors';
 import { listDownloadedVideos } from '@/utils/metaVideos';
+import { useTranslation } from 'react-i18next';
 
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [historyData, setHistoryData] = useState([]);
@@ -360,14 +362,14 @@ export default function HistoryScreen() {
             color: '#fff',
             marginBottom: 8,
           }}>
-            Download History
+            {t('history.headerTitle')}
           </Text>
           <Text style={{
             fontSize: 16,
             color: '#666',
             lineHeight: 22,
           }}>
-            Track all your video downloads and their status
+            {t('history.headerSubtitle')}
           </Text>
         </Animated.View>
 
@@ -390,7 +392,7 @@ export default function HistoryScreen() {
               color: '#999',
               fontWeight: '500',
             }}>
-              Filter by:
+              {t('history.filterBy')}
             </Text>
           </View>
           
@@ -401,31 +403,31 @@ export default function HistoryScreen() {
           >
             <FilterButton
               filter="all"
-              label="All"
+              label={t('history.filterAll')}
               isSelected={selectedFilter === 'all'}
               onPress={() => setSelectedFilter('all')}
             />
             <FilterButton
               filter="completed"
-              label="Completed"
+              label={t('history.filterCompleted')}
               isSelected={selectedFilter === 'completed'}
               onPress={() => setSelectedFilter('completed')}
             />
             <FilterButton
               filter="failed"
-              label="Failed"
+              label={t('history.filterFailed')}
               isSelected={selectedFilter === 'failed'}
               onPress={() => setSelectedFilter('failed')}
             />
             <FilterButton
               filter="facebook"
-              label="Facebook"
+              label={t('history.filterFacebook')}
               isSelected={selectedFilter === 'facebook'}
               onPress={() => setSelectedFilter('facebook')}
             />
             <FilterButton
               filter="instagram"
-              label="Instagram"
+              label={t('history.filterInstagram')}
               isSelected={selectedFilter === 'instagram'}
               onPress={() => setSelectedFilter('instagram')}
             />
@@ -465,7 +467,7 @@ export default function HistoryScreen() {
                   color: '#666',
                   marginTop: 2,
                 }}>
-                  Total Downloads
+                  {t('history.totalDownloads')}
                 </Text>
               </View>
               
@@ -482,7 +484,7 @@ export default function HistoryScreen() {
                   color: '#666',
                   marginTop: 2,
                 }}>
-                  Successful
+                  {t('history.successful')}
                 </Text>
               </View>
               
@@ -499,7 +501,7 @@ export default function HistoryScreen() {
                   color: '#666',
                   marginTop: 2,
                 }}>
-                  Failed
+                  {t('history.failed')}
                 </Text>
               </View>
             </View>
@@ -546,7 +548,7 @@ export default function HistoryScreen() {
                     fontSize: 15,
                     fontWeight: '500',
                   }}>
-                    Clear All History
+                    {t('history.clearAll')}
                   </Text>
                 </TouchableOpacity>
               </Animated.View>
@@ -563,7 +565,7 @@ export default function HistoryScreen() {
                 fontWeight: '500',
                 marginBottom: 8,
               }}>
-                No history found
+                {t('history.emptyTitle')}
               </Text>
               <Text style={{
                 fontSize: 14,
@@ -572,9 +574,8 @@ export default function HistoryScreen() {
                 lineHeight: 20,
               }}>
                 {selectedFilter === 'all' 
-                  ? 'Start downloading videos to see your history here'
-                  : `No ${selectedFilter} downloads found`
-                }
+                  ? t('history.emptyTextAll')
+                  : t('history.emptyTextFilter', { filter: selectedFilter })}
               </Text>
             </View>
           )}

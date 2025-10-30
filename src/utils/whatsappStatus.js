@@ -6,6 +6,29 @@ const { StorageAccessFramework } = FileSystem;
 const ANDROID_STATUSES_INITIAL_URI = 'content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fmedia%2Fcom.whatsapp%2FWhatsApp%2FMedia%2F.Statuses';
 const ANDROID_MEDIA_PARENT_URI = 'content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fmedia%2Fcom.whatsapp%2FWhatsApp%2FMedia';
 let STATUSES_DIR_URI = null;
+const PERSIST_URI_FILE = `${FileSystem.documentDirectory}whatsapp_statuses_uri.txt`;
+
+async function loadPersistedStatusesUri() {
+  try {
+    const info = await FileSystem.getInfoAsync(PERSIST_URI_FILE);
+    if (info.exists) {
+      const uri = await FileSystem.readAsStringAsync(PERSIST_URI_FILE);
+      if (uri && typeof uri === 'string') {
+        STATUSES_DIR_URI = uri;
+        return true;
+      }
+    }
+  } catch {}
+  return false;
+}
+
+async function persistStatusesUri(uri) {
+  try {
+    if (uri) {
+      await FileSystem.writeAsStringAsync(PERSIST_URI_FILE, uri, { encoding: FileSystem.EncodingType.UTF8 });
+    }
+  } catch {}
+}
 
 /**
  * Solicita permissões necessárias para acessar o armazenamento
@@ -18,8 +41,11 @@ export const requestStoragePermissions = async () => {
       return false;
     }
 
-    // Solicita apenas permissão de mídia
-    const mediaPermission = await MediaLibrary.requestPermissionsAsync();
+    // Evita pedir repetidamente: verifica antes
+    let mediaPermission = await MediaLibrary.getPermissionsAsync();
+    if (mediaPermission.status !== 'granted') {
+      mediaPermission = await MediaLibrary.requestPermissionsAsync();
+    }
     if (mediaPermission.status !== 'granted') {
       Alert.alert(
         'Permissão necessária',
@@ -44,17 +70,23 @@ export const checkWhatsAppDirectory = async () => {
   try {
     if (Platform.OS !== 'android') return false;
     if (STATUSES_DIR_URI) return true;
+    // Tenta carregar URI persistida antes de pedir novamente
+    const loaded = await loadPersistedStatusesUri();
+    if (loaded && STATUSES_DIR_URI) return true;
     // First attempt: open directly at .Statuses
     let perm = await StorageAccessFramework.requestDirectoryPermissionsAsync(ANDROID_STATUSES_INITIAL_URI);
     if (perm.granted) {
       const picked = perm.directoryUri || '';
-      if (decodeURIComponent(picked).toLowerCase().includes('/android/media/com.whatsapp/whatsapp/media/.statuses')) {
+      const decoded = decodeURIComponent(picked).toLowerCase();
+      // Accept any path that contains '/.statuses' (covers com.whatsapp and com.whatsapp.w4b)
+      if (decoded.includes('/.statuses')) {
         STATUSES_DIR_URI = perm.directoryUri;
+        await persistStatusesUri(STATUSES_DIR_URI);
         return true;
       }
       Alert.alert(
         'Selecione a pasta correta',
-        'Por favor navegue até Android > media > com.whatsapp > WhatsApp > Media > .Statuses e confirme.',
+        'Por favor navegue até Android > media > com.whatsapp (ou com.whatsapp.w4b) > WhatsApp > Media > .Statuses e confirme.',
         [{ text: 'OK' }]
       );
     }
@@ -65,8 +97,9 @@ export const checkWhatsAppDirectory = async () => {
       const picked = perm.directoryUri || '';
       // If user picked the parent, reprompt with guidance; if they did navigate into .Statuses, accept
       const decoded = decodeURIComponent(picked).toLowerCase();
-      if (decoded.endsWith('/android/media/com.whatsapp/whatsapp/media/.statuses') || decoded.includes('/android/media/com.whatsapp/whatsapp/media/.statuses')) {
+      if (decoded.includes('/.statuses')) {
         STATUSES_DIR_URI = perm.directoryUri;
+        await persistStatusesUri(STATUSES_DIR_URI);
         return true;
       }
       Alert.alert(
@@ -78,8 +111,9 @@ export const checkWhatsAppDirectory = async () => {
       const perm2 = await StorageAccessFramework.requestDirectoryPermissionsAsync(ANDROID_STATUSES_INITIAL_URI);
       if (perm2.granted) {
         const picked2 = decodeURIComponent(perm2.directoryUri || '').toLowerCase();
-        if (picked2.includes('/android/media/com.whatsapp/whatsapp/media/.statuses')) {
+        if (picked2.includes('/.statuses')) {
           STATUSES_DIR_URI = perm2.directoryUri;
+          await persistStatusesUri(STATUSES_DIR_URI);
           return true;
         }
       }
@@ -123,10 +157,12 @@ export const getWhatsAppStatuses = async () => {
         const name = nameRaw.replace(/\?[^/]*$/, '');
         const lower = name.toLowerCase();
         const isVideo = lower.endsWith('.mp4');
+        // Ensure filename is just the basename without folders or volume prefixes
+        const baseName = name.split('/').pop().split(':').pop();
         return {
           id: uri,
           uri,
-          filename: name,
+          filename: baseName,
           type: isVideo ? 'video' : 'image',
           size: undefined,
           modificationTime: Date.now(),
@@ -157,8 +193,11 @@ export const saveStatusToGallery = async (status) => {
     let localUri = sourceUri;
     if (sourceUri.startsWith('content://')) {
       const filename = status.filename || `status_${Date.now()}`;
-      const ext = (filename.toLowerCase().split('.').pop() || '').replace(/[^a-z0-9]/g, '');
-      const safeName = ext ? filename : `${filename}.mp4`;
+      let ext = (filename.toLowerCase().split('.').pop() || '').replace(/[^a-z0-9]/g, '');
+      if (!ext) {
+        ext = status.type === 'image' ? 'jpg' : 'mp4';
+      }
+      const safeName = filename.endsWith(`.${ext}`) ? filename : `${filename}.${ext}`;
       const cachePath = `${FileSystem.cacheDirectory}${safeName}`;
       const base64 = await StorageAccessFramework.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
       await FileSystem.writeAsStringAsync(cachePath, base64, { encoding: FileSystem.EncodingType.Base64 });
@@ -173,6 +212,13 @@ export const saveStatusToGallery = async (status) => {
     } else {
       await MediaLibrary.createAlbumAsync('ReelMate', asset, false);
     }
+
+    // Limpa arquivo temporário se foi criado
+    try {
+      if (localUri && localUri.startsWith(FileSystem.cacheDirectory) && localUri !== sourceUri) {
+        await FileSystem.deleteAsync(localUri, { idempotent: true });
+      }
+    } catch {}
 
     return true;
   } catch (error) {
