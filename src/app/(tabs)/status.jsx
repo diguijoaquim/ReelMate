@@ -61,36 +61,6 @@ export default function StatusScreen() {
       size: '2.1 MB',
     },
     {
-      id: '2',
-      type: 'video',
-      thumbnail: 'https://picsum.photos/300/300?random=2',
-      timestamp: Date.now() - 1000 * 60 * 60, // 1 hour ago
-      size: '5.3 MB',
-      duration: '0:15',
-    },
-    {
-      id: '3',
-      type: 'image',
-      thumbnail: 'https://picsum.photos/300/300?random=3',
-      timestamp: Date.now() - 1000 * 60 * 60 * 2, // 2 hours ago
-      size: '1.8 MB',
-    },
-    {
-      id: '4',
-      type: 'video',
-      thumbnail: 'https://picsum.photos/300/300?random=4',
-      timestamp: Date.now() - 1000 * 60 * 60 * 3, // 3 hours ago
-      size: '8.1 MB',
-      duration: '0:23',
-    },
-    {
-      id: '5',
-      type: 'image',
-      thumbnail: 'https://picsum.photos/300/300?random=5',
-      timestamp: Date.now() - 1000 * 60 * 60 * 4, // 4 hours ago
-      size: '3.2 MB',
-    },
-    {
       id: '6',
       type: 'video',
       thumbnail: 'https://picsum.photos/300/300?random=6',
