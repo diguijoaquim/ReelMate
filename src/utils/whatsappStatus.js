@@ -3,8 +3,6 @@ import * as MediaLibrary from 'expo-media-library';
 import { Alert, Platform } from 'react-native';
 
 const { StorageAccessFramework } = FileSystem;
-const ANDROID_STATUSES_INITIAL_URI = 'content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fmedia%2Fcom.whatsapp%2FWhatsApp%2FMedia%2F.Statuses';
-const ANDROID_MEDIA_PARENT_URI = 'content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fmedia%2Fcom.whatsapp%2FWhatsApp%2FMedia';
 let STATUSES_DIR_URI = null;
 const PERSIST_URI_FILE = `${FileSystem.documentDirectory}whatsapp_statuses_uri.txt`;
 
@@ -64,59 +62,47 @@ export const requestStoragePermissions = async () => {
 
 /**
  * Verifica se o diretório de status do WhatsApp existe
+ * Compatível com Android 11+ (sem URIs hardcoded)
  * @returns {Promise<boolean>} - Se o diretório existe
  */
 export const checkWhatsAppDirectory = async () => {
   try {
     if (Platform.OS !== 'android') return false;
     if (STATUSES_DIR_URI) return true;
+    
     // Tenta carregar URI persistida antes de pedir novamente
     const loaded = await loadPersistedStatusesUri();
     if (loaded && STATUSES_DIR_URI) return true;
-    // First attempt: open directly at .Statuses
-    let perm = await StorageAccessFramework.requestDirectoryPermissionsAsync(ANDROID_STATUSES_INITIAL_URI);
-    if (perm.granted) {
-      const picked = perm.directoryUri || '';
-      const decoded = decodeURIComponent(picked).toLowerCase();
-      // Accept any path that contains '/.statuses' (covers com.whatsapp and com.whatsapp.w4b)
+    
+    // Android 11+ - sem URI inicial, deixa o usuário selecionar
+    const perm = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+    
+    if (perm.granted && perm.directoryUri) {
+      const decoded = decodeURIComponent(perm.directoryUri).toLowerCase();
+      
+      // Valida se é .Statuses
       if (decoded.includes('/.statuses')) {
         STATUSES_DIR_URI = perm.directoryUri;
         await persistStatusesUri(STATUSES_DIR_URI);
         return true;
       }
+      
+      // Se não for .Statuses, guia o usuário
       Alert.alert(
-        'Selecione a pasta correta',
-        'Por favor navegue até Android > media > com.whatsapp (ou com.whatsapp.w4b) > WhatsApp > Media > .Statuses e confirme.',
-        [{ text: 'OK' }]
-      );
-    }
+        'Pasta Incorreta',
+        'Você selecionou a pasta errada.
 
-    // Fallback attempt: open at Media parent to let user navigate to .Statuses
-    perm = await StorageAccessFramework.requestDirectoryPermissionsAsync(ANDROID_MEDIA_PARENT_URI);
-    if (perm.granted) {
-      const picked = perm.directoryUri || '';
-      // If user picked the parent, reprompt with guidance; if they did navigate into .Statuses, accept
-      const decoded = decodeURIComponent(picked).toLowerCase();
-      if (decoded.includes('/.statuses')) {
-        STATUSES_DIR_URI = perm.directoryUri;
-        await persistStatusesUri(STATUSES_DIR_URI);
-        return true;
-      }
-      Alert.alert(
-        'Selecione a pasta .Statuses',
-        'Abrimos na pasta "Media". Entre na pasta oculta .Statuses e confirme o acesso.',
-        [{ text: 'OK' }]
+Navegue até:
+Android > media > com.whatsapp (ou com.whatsapp.w4b) > WhatsApp > Media > .Statuses',
+        [
+          {
+            text: 'Tentar Novamente',
+            onPress: () => checkWhatsAppDirectory(),
+          },
+          { text: 'Cancelar' },
+        ]
       );
-      // One more prompt targeting exactly .Statuses
-      const perm2 = await StorageAccessFramework.requestDirectoryPermissionsAsync(ANDROID_STATUSES_INITIAL_URI);
-      if (perm2.granted) {
-        const picked2 = decodeURIComponent(perm2.directoryUri || '').toLowerCase();
-        if (picked2.includes('/.statuses')) {
-          STATUSES_DIR_URI = perm2.directoryUri;
-          await persistStatusesUri(STATUSES_DIR_URI);
-          return true;
-        }
-      }
+      return false;
     }
 
     return false;
